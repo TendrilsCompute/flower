@@ -48,38 +48,44 @@ async fn main() -> Result<()> {
   }
   let dir = fs::canonicalize(&dir).await?;
 
-  let nodes = vec![
-    Node {
-      name: "lists".to_string(),
-      dependencies: vec![1, 2],
-      execs: vec![ExecRunInfo {
-        exec: PathBuf::from("ls"),
-        args: vec![dir.join("fingers/").into_os_string(), dir.join("toes/").into_os_string()],
-        ..Default::default()
-      }],
-    },
-    Node {
-      name: "fingers".to_string(),
-      dependencies: vec![],
-      execs: vec![ExecRunInfo {
-        exec: PathBuf::from("touch"),
-        args: vec!["bean.txt".into()],
-        ..Default::default()
-      }],
-    },
-    Node {
-      name: "toes".to_string(),
-      dependencies: vec![1],
-      execs: vec![ExecRunInfo {
-        exec: PathBuf::from("touch"),
-        args: vec!["toast.txt".into()],
-        ..Default::default()
-      }],
-    },
-  ];
+  let nodes = BTreeMap::from([
+    (
+      "lists".to_string(),
+      Node {
+        required_paths: vec![dir.join("fingers/"), dir.join("toes/")],
+        execs: vec![ExecRunInfo {
+          exec: PathBuf::from("ls"),
+          args: vec![dir.join("fingers/").into_os_string(), dir.join("toes/").into_os_string()],
+          ..Default::default()
+        }],
+      },
+    ),
+    (
+      "fingers".to_string(),
+      Node {
+        required_paths: vec![],
+        execs: vec![ExecRunInfo {
+          exec: PathBuf::from("touch"),
+          args: vec!["bean.txt".into()],
+          ..Default::default()
+        }],
+      },
+    ),
+    (
+      "toes".to_string(),
+      Node {
+        required_paths: vec![dir.join("fingers/")],
+        execs: vec![ExecRunInfo {
+          exec: PathBuf::from("touch"),
+          args: vec!["toast.txt".into()],
+          ..Default::default()
+        }],
+      },
+    ),
+  ]);
   let flow = FlowDescription { dir, nodes };
 
-  FlowRunner::from(flow).spawn_node(0).await.unwrap();
+  FlowRunner::from(flow).spawn_node("lists").await.unwrap();
 
   Ok(())
 }

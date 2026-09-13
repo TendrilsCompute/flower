@@ -8,20 +8,20 @@ use std::{
 };
 use tokio::task::JoinError;
 
-use crate::node::{Node, NodeId, NodeRunError};
+use crate::node::{Node, NodeRunError};
 
 #[derive(Serialize, Deserialize)]
 pub struct FlowDescription {
   pub dir: PathBuf,
-  pub nodes: Vec<Node>,
+  pub nodes: BTreeMap<String, Node>,
 }
 
 pub type FlowTask = Shared<BoxFuture<'static, Result<(), FlowRunError>>>;
 
 pub struct FlowRunner {
-  pub flow: FlowDescription,
-  spawned: BTreeMap<NodeId, FlowTask>,
-  spawning: HashSet<NodeId>,
+  flow: FlowDescription,
+  spawned: BTreeMap<String, FlowTask>,
+  spawning: HashSet<String>,
 }
 impl From<FlowDescription> for FlowRunner {
   fn from(flow: FlowDescription) -> Self {
@@ -31,34 +31,40 @@ impl From<FlowDescription> for FlowRunner {
 
 impl FlowRunner {
   /// Recursively spawns the node and its dependencies, returning a shared future.
-  pub fn spawn_node(&mut self, id: NodeId) -> FlowTask {
-    if let Some(task) = self.spawned.get(&id) {
+  pub fn spawn_node(&mut self, name: &str) -> FlowTask {
+    if let Some(task) = self.spawned.get(name) {
       return task.clone();
     }
 
     let flow_err = |err| future::ready(Err(err)).boxed().shared();
 
-    let Some(node) = self.flow.nodes.get(id).cloned() else {
-      return flow_err(FlowRunError::NodeIdNotFound(id));
+    let Some(node) = self.flow.nodes.get(name).cloned() else {
+      return flow_err(FlowRunError::NodeNotFound(name.into()));
     };
-    let node_dir = self.flow.dir.join(&node.name);
 
-    if !self.spawning.insert(id) {
-      return flow_err(FlowRunError::CircularDependency(node.name));
+    if !self.spawning.insert(name.into()) {
+      return flow_err(FlowRunError::CircularDependency(name.into()));
     }
 
-    let dep_tasks: Vec<_> = node.dependencies.iter().map(|dep| self.spawn_node(*dep)).collect();
+    let dep_names = self.get_dependencies(node.required_paths.iter());
+    if dep_names.contains(name) {
+      return flow_err(FlowRunError::RequiringOwnPath(name.into()));
+    }
 
-    let node_fut = async move {
-      let to_flow_err = |err| FlowRunError::NodeError(id, err);
+    let dep_tasks: Vec<_> = dep_names.iter().map(|dep| self.spawn_node(dep)).collect();
 
-      for dep_task in dep_tasks {
-        dep_task.await?;
+    let node_fut = {
+      let node_dir = self.flow.dir.join(name);
+      let name = name.to_string();
+
+      async move {
+        for dep_task in dep_tasks {
+          dep_task.await?;
+        }
+        println!("Executing node: {}", &name);
+        node.run(&node_dir).await.map_err(|err| FlowRunError::NodeError(name, err))?;
+        Ok(())
       }
-
-      println!("Executing node: {}", node.name);
-      node.run(&node_dir).await.map_err(to_flow_err)?;
-      Ok(())
     };
 
     let handle = tokio::spawn(node_fut);
@@ -71,19 +77,28 @@ impl FlowRunner {
       .boxed()
       .shared();
 
-    self.spawned.insert(id, shared_task.clone());
-    self.spawning.remove(&id);
+    let name = self.spawning.take(name).expect("The name is expected to be in spawning.");
+    self.spawned.insert(name, shared_task.clone());
 
     shared_task
+  }
+
+  fn get_dependencies<'a>(&self, paths: impl Iterator<Item = &'a PathBuf>) -> HashSet<String> {
+    paths
+      .filter_map(|path| path.strip_prefix(&self.flow.dir).ok())
+      .filter_map(|path| path.iter().next())
+      .map(|name| name.to_str().unwrap().to_string())
+      .collect()
   }
 }
 
 #[derive(Clone, Debug)]
 pub enum FlowRunError {
   PanicOrAbort(Arc<JoinError>),
-  NodeIdNotFound(NodeId),
+  NodeNotFound(String),
   CircularDependency(String),
-  NodeError(NodeId, NodeRunError),
+  RequiringOwnPath(String),
+  NodeError(String, NodeRunError),
 }
 impl From<JoinError> for FlowRunError {
   fn from(error: JoinError) -> Self {

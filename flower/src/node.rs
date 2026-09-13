@@ -1,19 +1,15 @@
 use rmp_serde::{Serializer, config::BytesMode, encode};
 use serde::{Deserialize, Serialize};
-use std::{
-  path::Path, sync::Arc
-};
-use tokio::io::{self, AsyncWriteExt};
+use std::path::PathBuf;
+use std::{path::Path, sync::Arc};
 use tokio::fs;
+use tokio::io::{self, AsyncWriteExt};
 
 use crate::exec::{ExecRunInfo, ExecRunResult, ExitStatus};
 
-pub type NodeId = usize;
-
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Node {
-  pub name: String,
-  pub dependencies: Vec<NodeId>,
+  pub required_paths: Vec<PathBuf>,
   pub execs: Vec<ExecRunInfo>,
 }
 
@@ -76,4 +72,3 @@ impl From<encode::Error> for NodeRunError {
     Self::Serdes(Arc::new(error))
   }
 }
-
