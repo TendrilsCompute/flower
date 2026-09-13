@@ -1,0 +1,91 @@
+use std::{collections::BTreeMap, io::ErrorKind, path::PathBuf};
+
+use tokio::fs;
+use anyhow::Result;
+use flower::{ExecRunInfo, FlowDescription, FlowRunner, Node};
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+pub struct FlowFile {
+  pub common: CommonConfig,
+  pub nodes: Vec<NodeDecl>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CommonConfig {
+  pub paths: BTreeMap<String, Vec<PathBuf>>,
+  pub systemverilog: Vec<NodeDecl>,
+}
+
+
+#[derive(Debug, Deserialize)]
+pub struct NodeDecl {
+  pub name: String,
+  #[serde(default)]
+  pub deps: Vec<String>,
+  #[serde(flatten)]
+  pub kind: NodeKind,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum NodeKind {
+  SlangFlist,
+  VerilatorLint,
+}
+
+#[tokio::main(flavor = "local")]
+async fn main() -> Result<()> {
+  let dir = PathBuf::from("build");
+
+  match fs::create_dir(&dir).await {
+    Ok(_) => (),
+    Err(e) if e.kind() == ErrorKind::AlreadyExists => (),
+    err => err?,
+  }
+  let dir = fs::canonicalize(&dir).await?;
+
+  let nodes = vec![
+    Node {
+      name: "lists".to_string(),
+      dependencies: vec![1, 2],
+      execs: vec![
+        ExecRunInfo {
+          exec: PathBuf::from("ls"),
+          args: vec![
+            dir.join("fingers/").into_os_string(),
+            dir.join("toes/").into_os_string(),
+          ],
+          ..Default::default()
+        },
+      ]
+    },
+    Node {
+      name: "fingers".to_string(),
+      dependencies: vec![],
+      execs: vec![
+        ExecRunInfo {
+          exec: PathBuf::from("touch"),
+          args: vec!["bean.txt".into()],
+          ..Default::default()
+        },
+      ]
+    },
+    Node {
+      name: "toes".to_string(),
+      dependencies: vec![1],
+      execs: vec![
+        ExecRunInfo {
+          exec: PathBuf::from("touch"),
+          args: vec!["toast.txt".into()],
+          ..Default::default()
+        },
+      ]
+    },
+  ];
+  let flow = FlowDescription { dir, nodes };
+
+  FlowRunner::from(flow).spawn_node(0).await.unwrap();
+
+  Ok(())
+}

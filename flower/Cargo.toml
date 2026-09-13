@@ -1,0 +1,11 @@
+[package]
+name = "flower"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+brotli.workspace = true
+serde.workspace = true
+rmp-serde.workspace = true
+tokio.workspace = true
+futures.workspace = true
