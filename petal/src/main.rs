@@ -1,9 +1,13 @@
 use std::{collections::BTreeMap, io::ErrorKind, path::PathBuf};
 
-use tokio::fs;
 use anyhow::Result;
-use flower::{ExecRunInfo, FlowDescription, FlowRunner, Node};
+use flower::{
+  exec::ExecRunInfo,
+  flow::{FlowDescription, FlowRunner},
+  node::Node,
+};
 use serde::Deserialize;
+use tokio::fs;
 
 #[derive(Debug, Deserialize)]
 pub struct FlowFile {
@@ -16,7 +20,6 @@ pub struct CommonConfig {
   pub paths: BTreeMap<String, Vec<PathBuf>>,
   pub systemverilog: Vec<NodeDecl>,
 }
-
 
 #[derive(Debug, Deserialize)]
 pub struct NodeDecl {
@@ -36,7 +39,7 @@ pub enum NodeKind {
 
 #[tokio::main(flavor = "local")]
 async fn main() -> Result<()> {
-  let dir = PathBuf::from("build");
+  let dir = PathBuf::from("/tmp/build");
 
   match fs::create_dir(&dir).await {
     Ok(_) => (),
@@ -49,38 +52,29 @@ async fn main() -> Result<()> {
     Node {
       name: "lists".to_string(),
       dependencies: vec![1, 2],
-      execs: vec![
-        ExecRunInfo {
-          exec: PathBuf::from("ls"),
-          args: vec![
-            dir.join("fingers/").into_os_string(),
-            dir.join("toes/").into_os_string(),
-          ],
-          ..Default::default()
-        },
-      ]
+      execs: vec![ExecRunInfo {
+        exec: PathBuf::from("ls"),
+        args: vec![dir.join("fingers/").into_os_string(), dir.join("toes/").into_os_string()],
+        ..Default::default()
+      }],
     },
     Node {
       name: "fingers".to_string(),
       dependencies: vec![],
-      execs: vec![
-        ExecRunInfo {
-          exec: PathBuf::from("touch"),
-          args: vec!["bean.txt".into()],
-          ..Default::default()
-        },
-      ]
+      execs: vec![ExecRunInfo {
+        exec: PathBuf::from("touch"),
+        args: vec!["bean.txt".into()],
+        ..Default::default()
+      }],
     },
     Node {
       name: "toes".to_string(),
       dependencies: vec![1],
-      execs: vec![
-        ExecRunInfo {
-          exec: PathBuf::from("touch"),
-          args: vec!["toast.txt".into()],
-          ..Default::default()
-        },
-      ]
+      execs: vec![ExecRunInfo {
+        exec: PathBuf::from("touch"),
+        args: vec!["toast.txt".into()],
+        ..Default::default()
+      }],
     },
   ];
   let flow = FlowDescription { dir, nodes };
