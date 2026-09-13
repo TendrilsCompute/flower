@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, io::ErrorKind, path::PathBuf};
 
 use anyhow::Result;
+use camino::Utf8PathBuf;
 use flower::{
   exec::ExecRunInfo,
   flow::{FlowDescription, FlowRunner},
@@ -39,14 +40,16 @@ pub enum NodeKind {
 
 #[tokio::main(flavor = "local")]
 async fn main() -> Result<()> {
-  let dir = PathBuf::from("/tmp/build");
+  tracing_subscriber::fmt::init();
+
+  let dir = Utf8PathBuf::from("/tmp/build");
 
   match fs::create_dir(&dir).await {
     Ok(_) => (),
     Err(e) if e.kind() == ErrorKind::AlreadyExists => (),
     err => err?,
   }
-  let dir = fs::canonicalize(&dir).await?;
+  let dir = Utf8PathBuf::from_path_buf(fs::canonicalize(&dir).await?).unwrap();
 
   let nodes = BTreeMap::from([
     (
@@ -54,7 +57,7 @@ async fn main() -> Result<()> {
       Node {
         required_paths: vec![dir.join("fingers/"), dir.join("toes/")],
         execs: vec![ExecRunInfo {
-          exec: PathBuf::from("ls"),
+          exec: Utf8PathBuf::from("ls"),
           args: vec![dir.join("fingers/").into_os_string(), dir.join("toes/").into_os_string()],
           ..Default::default()
         }],
@@ -65,7 +68,7 @@ async fn main() -> Result<()> {
       Node {
         required_paths: vec![],
         execs: vec![ExecRunInfo {
-          exec: PathBuf::from("touch"),
+          exec: Utf8PathBuf::from("touch"),
           args: vec!["bean.txt".into()],
           ..Default::default()
         }],
@@ -76,7 +79,7 @@ async fn main() -> Result<()> {
       Node {
         required_paths: vec![dir.join("fingers/")],
         execs: vec![ExecRunInfo {
-          exec: PathBuf::from("touch"),
+          exec: Utf8PathBuf::from("touch"),
           args: vec!["toast.txt".into()],
           ..Default::default()
         }],

@@ -1,18 +1,18 @@
+use camino::{Utf8Path, Utf8PathBuf};
 use serde::{Deserialize, Serialize};
 use std::{
   collections::BTreeMap,
   ffi::OsString,
-  path::{Path, PathBuf},
 };
 use tokio::io::{self};
 use tokio::process::Command;
 
 pub type ExitStatus = i32;
 
-#[derive(Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct ExecRunInfo {
   pub env: BTreeMap<OsString, OsString>,
-  pub exec: PathBuf,
+  pub exec: Utf8PathBuf,
   pub no_check: bool,
   pub args: Vec<OsString>,
 }
@@ -25,7 +25,7 @@ pub struct ExecRunResult {
 }
 
 impl ExecRunInfo {
-  pub async fn run(&self, run_dir: &Path) -> io::Result<ExecRunResult> {
+  pub async fn run(&self, run_dir: &Utf8Path) -> io::Result<ExecRunResult> {
     let output = Command::from(self).current_dir(run_dir).output().await?;
     Ok(ExecRunResult {
       stdout: output.stdout,
