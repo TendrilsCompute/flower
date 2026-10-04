@@ -1,8 +1,11 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::sync::Arc;
 use tokio::fs;
 use tokio::io;
+use tokio::sync::Mutex;
+use tracing::info;
 
 use crate::exec::{ExecRunInfo, ExecRunResult, ExitStatus};
 use crate::hash::{HashingError, PathHash, PathHasher};
@@ -21,25 +24,36 @@ impl Node {
     &self,
     node_dir: &Utf8Path,
     hasher: &mut PathHasher,
-  ) -> NodeResult<Option<Vec<&Utf8PathBuf>>> {
+  ) -> NodeResult<bool> {
     let required_paths = self.required_paths.iter();
 
     if !NodeRunInfo::file_exists(node_dir).await? {
-      return Ok(Some(required_paths.collect()))
+      return Ok(true);
     }
 
     let info = NodeRunInfo::read(node_dir).await?;
-    let changed_paths = info.changed_paths(required_paths, hasher).await?;
-
-    if changed_paths.is_empty() {
-      return Ok(None)
-    }
-    Ok(Some(changed_paths))
+    let hashes_match = info.hashes_match(required_paths, hasher).await?;
+    Ok(!hashes_match)
   }
 
-  pub async fn run(&self, node_dir: &Utf8Path, hasher: &mut PathHasher) -> Result<(), NodeError> {
-    // We may change these paths, so we should clear the cache.
-    hasher.remove(node_dir);
+  pub async fn run(
+    &self,
+    node_dir: &Utf8Path,
+    hasher: Arc<Mutex<PathHasher>>,
+  ) -> Result<(), NodeError> {
+    let name = || node_dir.file_name().unwrap();
+
+    {
+      let mut hasher = hasher.lock().await;
+      if !self.rerun_required(node_dir, &mut hasher).await? {
+        info!("Skipping {}.", name());
+        return Ok(());
+      }
+      // We may change these paths, so we should clear the cache.
+      hasher.remove(node_dir);
+    }
+
+    info!("Running {}.", name());
 
     let mut info = NodeRunInfo::default();
 
@@ -57,9 +71,12 @@ impl Node {
       }
     }
 
-    for path in &self.required_paths {
-      let hash = hasher.hash(path)?;
-      info.required_path_hashes.insert(path.into(), hash);
+    {
+      let mut hasher = hasher.lock().await;
+      for path in &self.required_paths {
+        let hash = hasher.hash(path)?;
+        info.required_path_hashes.insert(path.into(), hash);
+      }
     }
 
     info.write(node_dir).await?;
@@ -93,23 +110,19 @@ impl NodeRunInfo {
     serialization::write(self, &Self::info_path(node_dir)).await
   }
 
-  pub async fn changed_paths<'a>(
+  pub async fn hashes_match<'a>(
     &self,
     paths: impl Iterator<Item = &'a Utf8PathBuf>,
     hasher: &mut PathHasher,
-  ) -> Result<Vec<&'a Utf8PathBuf>, HashingError> {
-    let mut changed_paths = vec![];
+  ) -> Result<bool, HashingError> {
     for path in paths {
-      let Some(previous_hash) = self.required_path_hashes.get(path) else {
-        changed_paths.push(path);
-        continue;
-      };
+      let Some(previous_hash) = self.required_path_hashes.get(path) else { return Ok(false) };
       let hash = hasher.hash(path)?;
       if hash != *previous_hash {
-        changed_paths.push(path)
+        return Ok(false);
       }
     }
-    Ok(changed_paths)
+    Ok(true)
   }
 }
 

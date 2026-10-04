@@ -3,9 +3,10 @@ use futures::future::{BoxFuture, FutureExt, Shared};
 use serde::{Deserialize, Serialize};
 use std::{
   collections::{BTreeMap, BTreeSet},
+  future,
   sync::Arc,
 };
-use tokio::{sync::RwLock, task::JoinError};
+use tokio::{sync::Mutex, task::JoinError};
 use tracing::debug;
 
 use crate::{
@@ -28,102 +29,74 @@ impl FlowDescription {
   }
 }
 
-type NodeName = String;
+type NodeId = String;
 pub type FlowTask = Shared<BoxFuture<'static, Result<(), FlowError>>>;
 
 #[derive(Default)]
-struct FlowRunState {
-  flow: FlowDescription,
-  hasher: PathHasher,
-  tasks: BTreeMap<NodeName, FlowTask>,
-}
-
-#[derive(Default)]
 pub struct FlowRunner {
-  state: Arc<RwLock<FlowRunState>>,
+  flow: FlowDescription,
+  spawned: BTreeMap<NodeId, FlowTask>,
+  spawning: BTreeSet<NodeId>,
+  hasher: Arc<Mutex<PathHasher>>,
 }
 impl From<FlowDescription> for FlowRunner {
   fn from(flow: FlowDescription) -> Self {
-    let state = FlowRunState { flow, ..Default::default() };
-    FlowRunner { state: Arc::new(RwLock::new(state)) }
+    Self { flow, ..Default::default() }
   }
 }
 
 impl FlowRunner {
-  pub fn spawn_node(&self, name: impl Into<String>) -> FlowTask {
-    Self::spawn_dep(self.state.clone(), name.into(), vec![])
-  }
+  /// Recursively spawns the node and its dependencies, returning a shared future.
+  pub fn spawn_node(&mut self, name: &str) -> FlowTask {
+    if let Some(task) = self.spawned.get(name) {
+      return task.clone();
+    }
 
-  fn spawn_dep(
-    state: Arc<RwLock<FlowRunState>>,
-    name: String,
-    mut path: Vec<String>,
-  ) -> FlowTask {
-    let node_fut = async move {
-      if path.contains(&name) {
-        path.push(name);
-        return Err(FlowError::CircularDependency(path));
-      }
+    let flow_err = |err| future::ready(Err(err)).boxed().shared();
 
-      let (node, node_dir) = {
-        let state = state.read().await;
-        if let Some(task) = state.tasks.get(&name).cloned() {
-          return task.await;
-        }
-
-        let node_dir = state.flow.dir.join(&name);
-        let Some(node) = state.flow.nodes.get(&name).cloned() else {
-          return Err(FlowError::NodeNotFound(name));
-        };
-        (node, node_dir)
-      };
-
-      let dep_names = {
-        let mut state = state.write().await;
-
-        let rerun_paths = match node.rerun_required(&node_dir, &mut state.hasher).await {
-          Err(err) => return Err(FlowError::NodeError(name, Arc::new(err))),
-          Ok(None) => {
-            debug!("Skipping '{name}'. No change since last run.");
-            return Ok(());
-          }
-          Ok(Some(rerun_paths)) => rerun_paths,
-        };
-
-        state.flow.deps_from_paths(rerun_paths.into_iter())
-      };
-
-      debug!("'{name}' requires {dep_names:?} to be run.");
-
-      if dep_names.contains(&name) {
-        return Err(FlowError::RequiringOwnPath(name));
-      }
-
-      path.push(name);
-
-      let mut dep_tasks = vec![];
-      for dep in dep_names.into_iter() {
-        dep_tasks.push(Self::spawn_dep(state.clone(), dep, path.clone()));
-      }
-
-      for dep_task in dep_tasks {
-        dep_task.await?;
-      }
-
-      debug!("Running '{}'", path.last().unwrap());
-      let flow_err = move |err| FlowError::NodeError(path.pop().unwrap(), Arc::new(err));
-      let hasher = &mut state.write().await.hasher;
-      node.run(&node_dir, hasher).await.map_err(flow_err)
+    let Some(node) = self.flow.nodes.get(name).cloned() else {
+      return flow_err(FlowError::NodeNotFound(name.into()));
     };
 
-    tokio::spawn(node_fut)
+    if !self.spawning.insert(name.into()) {
+      return flow_err(FlowError::CircularDependency(name.into()));
+    }
+
+    let dep_names = self.flow.deps_from_paths(node.required_paths.iter());
+    if dep_names.contains(name) {
+      return flow_err(FlowError::RequiringOwnPath(name.into()));
+    }
+    debug!("{name} depends on {dep_names:?}.");
+
+    let dep_tasks: Vec<_> = dep_names.iter().map(|dep| self.spawn_node(dep)).collect();
+
+    let node_fut = {
+      let node_dir = self.flow.dir.join(name);
+      let name = name.to_string();
+      let hasher = self.hasher.clone();
+
+      async move {
+        for dep_task in dep_tasks {
+          dep_task.await?;
+        }
+        node.run(&node_dir, hasher).await.map_err(|err| FlowError::NodeError(name, err.into()))?;
+        Ok(())
+      }
+    };
+
+    let shared_task = tokio::spawn(node_fut)
       .map(|res| match res {
         Ok(Ok(())) => Ok(()),
         Ok(Err(node_run_error)) => Err(node_run_error),
         Err(join_error) => Err(join_error.into()),
       })
       .boxed()
-      .shared()
+      .shared();
+
+    let name = self.spawning.take(name).expect("The name is expected to be in spawning.");
+    self.spawned.insert(name, shared_task.clone());
+
+    shared_task
   }
 }
 
@@ -131,7 +104,7 @@ impl FlowRunner {
 pub enum FlowError {
   PanicOrAbort(Arc<JoinError>),
   NodeNotFound(String),
-  CircularDependency(Vec<String>),
+  CircularDependency(String),
   RequiringOwnPath(String),
   NodeError(String, Arc<NodeError>),
 }
