@@ -1,6 +1,7 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use rmp_serde::{Serializer, config::BytesMode, decode, encode, from_slice};
 use serde::{Serialize, de::DeserializeOwned};
+use thiserror::Error;
 use tokio::{
   fs,
   io::{self, AsyncWriteExt},
@@ -31,15 +32,20 @@ pub fn serialize(thing: impl Serialize, path: &Utf8Path) -> SerializationResult<
   Ok(serialized)
 }
 
-pub fn deserialize<T: DeserializeOwned>(serialized: &[u8], path: &Utf8Path) -> SerializationResult<T> {
+pub fn deserialize<T: DeserializeOwned>(
+  serialized: &[u8],
+  path: &Utf8Path,
+) -> SerializationResult<T> {
   from_slice::<T>(serialized).map_err(decode_err(path))
 }
 
-
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum SerializationError {
+  #[error("IO error ({0}): {1}")]
   Io(Utf8PathBuf, io::Error),
+  #[error("Encode error ({0}): {1}")]
   Encode(Utf8PathBuf, encode::Error),
+  #[error("Decode error ({0}): {1}")]
   Decode(Utf8PathBuf, decode::Error),
 }
 pub fn io_err(path: &Utf8Path) -> impl FnOnce(io::Error) -> SerializationError {

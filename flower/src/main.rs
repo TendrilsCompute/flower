@@ -7,18 +7,15 @@ use flower::hash::PathHasher;
 
 #[derive(Parser)]
 struct Cli {
-    #[command(subcommand)]
-    command: Command,
+  #[command(subcommand)]
+  command: Command,
 }
 
 #[derive(Subcommand)]
 enum Command {
   /// Output (as raw bytes) the hash of a path
-  Hash {
-    path: Utf8PathBuf,
-  },
+  Hash { path: Utf8PathBuf },
 }
-
 
 fn main() {
   let Command::Hash { path } = Cli::parse().command;

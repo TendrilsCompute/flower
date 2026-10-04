@@ -13,7 +13,7 @@ pub struct PathHasher {
 impl PathHasher {
   pub fn hash(&mut self, path: &Utf8Path) -> Result<PathHash, IndexingError> {
     if let Some(hash) = self.cache.get(path) {
-      return Ok(hash.clone())
+      return Ok(hash.clone());
     }
     // If a subdirectory has previously been hashed,
     // we are sadly not reusing it when hashing the parent directory.
@@ -26,6 +26,6 @@ impl PathHasher {
   }
 
   pub fn remove(&mut self, path: &Utf8Path) {
-    self.cache.retain(|cache_path, _ | !cache_path.starts_with(path))
+    self.cache.retain(|cache_path, _| !cache_path.starts_with(path))
   }
 }

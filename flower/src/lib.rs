@@ -1,6 +1,18 @@
+use camino::Utf8Path;
+use tokio::{fs, io};
+
 pub mod exec;
 pub mod flow;
 pub mod node;
 
 pub mod hash;
-mod serialization;
+pub mod serialization;
+
+pub async fn clean_dir(path: &Utf8Path) -> io::Result<()> {
+  match fs::remove_dir_all(path).await {
+    Ok(_) => {}
+    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+    Err(e) => return Err(e),
+  }
+  fs::create_dir_all(path).await
+}

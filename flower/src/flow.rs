@@ -6,6 +6,7 @@ use std::{
   future,
   sync::Arc,
 };
+use thiserror::Error;
 use tokio::{sync::Mutex, task::JoinError};
 use tracing::debug;
 
@@ -20,6 +21,10 @@ pub struct FlowDescription {
   pub nodes: BTreeMap<String, Node>,
 }
 impl FlowDescription {
+  pub fn node_dir(&self, name: &str) -> Utf8PathBuf {
+    self.dir.join(name)
+  }
+
   fn deps_from_paths<'a>(&self, paths: impl Iterator<Item = &'a Utf8PathBuf>) -> BTreeSet<String> {
     paths
       .filter_map(|path| path.strip_prefix(&self.dir).ok())
@@ -71,7 +76,7 @@ impl FlowRunner {
     let dep_tasks: Vec<_> = dep_names.iter().map(|dep| self.spawn_node(dep)).collect();
 
     let node_fut = {
-      let node_dir = self.flow.dir.join(name);
+      let node_dir = self.flow.node_dir(name);
       let name = name.to_string();
       let hasher = self.hasher.clone();
 
@@ -100,12 +105,17 @@ impl FlowRunner {
   }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Error)]
 pub enum FlowError {
+  #[error("Async task didn't complete: {0}")]
   PanicOrAbort(Arc<JoinError>),
+  #[error("Node '{0}' could not be found.")]
   NodeNotFound(String),
+  #[error("Circular dependency involving node '{0}'.")]
   CircularDependency(String),
+  #[error("Node '{0}' requires it's own path.")]
   RequiringOwnPath(String),
+  #[error("Node '{0}' failure: {1}")]
   NodeError(String, Arc<NodeError>),
 }
 impl From<JoinError> for FlowError {

@@ -1,0 +1,12 @@
+[package]
+name = "flower_foss"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+flower = { path = "../flower" }
+tokio.workspace = true
+futures.workspace = true
+camino.workspace = true
+serde.workspace = true
+which.workspace = true

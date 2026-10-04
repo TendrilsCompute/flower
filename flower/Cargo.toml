@@ -13,3 +13,4 @@ futures.workspace = true
 merkle_hash.workspace = true
 camino.workspace = true
 clap.workspace = true
+thiserror.workspace = true
