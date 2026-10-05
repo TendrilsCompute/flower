@@ -1,7 +1,7 @@
 use camino::Utf8Path;
 use tokio::{fs, io};
 
-pub mod exec;
+pub mod command;
 pub mod flow;
 pub mod node;
 

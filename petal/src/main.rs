@@ -3,12 +3,7 @@ use std::{collections::BTreeMap, env, io::ErrorKind, path::PathBuf};
 use anyhow::{Context, Result, anyhow};
 use camino::{Utf8Path, Utf8PathBuf};
 use clap::Parser;
-use flower::{
-  exec::ExecRunInfo,
-  flow::{FlowDescription, FlowRunner},
-  node::Node,
-  serialization,
-};
+use flower::flow::FlowRunner;
 use flower_foss::{Project, lint};
 use serde::Deserialize;
 use tokio::fs;
@@ -118,12 +113,9 @@ async fn main() -> Result<()> {
   let flow = FlowDescription { dir, nodes };
   */
 
-  let flow_file_path = dir.join("info.msgpack");
-  let flow = lint(dir, "graft_engine", &project);
+  let flow = lint(dir, "graft_engine", &project)?;
 
-  serialization::write(&flow, &flow_file_path).await?;
-
-  FlowRunner::from(flow).spawn_node("slang_lint").await?;
+  FlowRunner::from(flow).spawn_node("slang_lint", true).await?;
 
   Ok(())
 }

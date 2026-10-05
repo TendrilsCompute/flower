@@ -10,3 +10,4 @@ futures.workspace = true
 camino.workspace = true
 serde.workspace = true
 which.workspace = true
+thiserror.workspace = true

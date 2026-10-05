@@ -9,7 +9,8 @@ use tokio::sync::Mutex;
 use tracing::{debug, info};
 
 use crate::clean_dir;
-use crate::exec::{ExecRunInfo, ExecRunResult, ExitStatus};
+use crate::command::CommandError;
+use crate::command::{InternalCommands, Command, CommandResult, ExitStatus};
 use crate::hash::{HashingError, PathHash, PathHasher};
 use crate::serialization::{self, SerializationError};
 
@@ -18,7 +19,7 @@ type NodeResult<T> = Result<T, NodeError>;
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct Node {
   pub required_paths: Vec<Utf8PathBuf>,
-  pub execs: Vec<ExecRunInfo>,
+  pub commands: Vec<Command>,
 }
 
 impl Node {
@@ -44,10 +45,10 @@ impl Node {
     let info = NodeRunInfo::read(node_dir).await?;
 
     if self
-      .execs
+      .commands
       .iter()
-      .zip(info.exec_results.iter())
-      .any(|(exec, result)| !exec.no_check && result.status != 0)
+      .zip(info.results.iter())
+      .any(|(cmd, result)| !cmd.no_check() && result.status != 0)
     {
       debug!("{} requires rerun due to failure last run.", name());
       return Ok(true);
@@ -57,12 +58,18 @@ impl Node {
     Ok(!hashes_match)
   }
 
-  pub async fn run(&self, node_dir: &Utf8Path, hasher: Arc<Mutex<PathHasher>>) -> NodeResult<()> {
+  pub async fn run(
+    &self,
+    node_dir: &Utf8Path,
+    builtins: &InternalCommands,
+    hasher: Arc<Mutex<PathHasher>>,
+    force_rerun: bool,
+  ) -> NodeResult<()> {
     let name = || node_dir.file_name().unwrap();
 
     {
       let mut hasher = hasher.lock().await;
-      if !self.rerun_required(node_dir, &mut hasher).await? {
+      if !force_rerun && !self.rerun_required(node_dir, &mut hasher).await? {
         info!("Skipping {}.", name());
         return Ok(());
       }
@@ -77,13 +84,13 @@ impl Node {
     clean_dir(node_dir).await.map_err(NodeError::CreateNodeDir)?;
     self.write(node_dir).await?;
 
-    for exec in &self.execs {
-      let exec_result = exec.run(node_dir).await.map_err(NodeError::Execute)?;
+    for command in &self.commands {
+      let exec_result = command.run(node_dir, builtins).await.map_err(NodeError::Execute)?;
       let status = exec_result.status;
 
-      info.exec_results.push(exec_result);
+      info.results.push(exec_result);
 
-      if !exec.no_check && status != 0 {
+      if !command.no_check() && status != 0 {
         if let Ok(hashes) = self.required_path_hashes(hasher).await {
           info.required_path_hashes = hashes;
         }
@@ -114,7 +121,7 @@ impl Node {
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct NodeRunInfo {
-  exec_results: Vec<ExecRunResult>,
+  results: Vec<CommandResult>,
   required_path_hashes: BTreeMap<Utf8PathBuf, PathHash>,
 }
 
@@ -170,23 +177,13 @@ where
 #[derive(Debug, Error)]
 pub enum NodeError {
   #[error("Serialization: {0}")]
-  Serialization(SerializationError),
+  Serialization(#[from] SerializationError),
   #[error("Hashing error: {0}")]
-  Hashing(HashingError),
+  Hashing(#[from] HashingError),
   #[error("Failed to create node directory: {0}")]
   CreateNodeDir(io::Error),
-  #[error("Failed to run executable: {0}")]
-  Execute(io::Error),
+  #[error("Failed to run command: {0}")]
+  Execute(#[from] CommandError),
   #[error("Executable terminiated with status {0}")]
   NonZeroExitStatus(ExitStatus),
-}
-impl From<SerializationError> for NodeError {
-  fn from(error: SerializationError) -> Self {
-    Self::Serialization(error)
-  }
-}
-impl From<HashingError> for NodeError {
-  fn from(error: HashingError) -> Self {
-    Self::Hashing(error)
-  }
 }

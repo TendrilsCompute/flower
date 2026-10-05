@@ -288,6 +288,7 @@ dependencies = [
  "flower",
  "futures",
  "serde",
+ "thiserror",
  "tokio",
  "which",
 ]
