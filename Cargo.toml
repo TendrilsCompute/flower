@@ -21,3 +21,4 @@ merkle_hash = "3.9.0"
 camino = { version = "1.2", features = [ "serde1" ] }
 which = "8.0.6"
 thiserror = "2.0.21"
+walkdir = "2.5"

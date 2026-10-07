@@ -115,7 +115,7 @@ async fn main() -> Result<()> {
 
   let flow = lint(dir, "graft_engine", &project)?;
 
-  FlowRunner::from(flow).spawn_node("slang_lint", true).await?;
+  FlowRunner::from(flow).spawn_node("all_lints", true).await?;
 
   Ok(())
 }

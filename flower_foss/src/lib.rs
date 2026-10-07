@@ -1,6 +1,9 @@
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{
+  collections::{BTreeMap, BTreeSet},
+  path::PathBuf,
+};
 
-use camino::{Utf8Component, Utf8Path, Utf8PathBuf};
+use camino::{Utf8Path, Utf8PathBuf};
 use flower::{
   command::{Command, CommandResult, ExternalCommand},
   flow::FlowDescription,
@@ -13,6 +16,7 @@ use tokio::{
   fs::File,
   io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter},
 };
+use walkdir::WalkDir;
 use which::{Error as WhichError, which};
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -50,10 +54,21 @@ pub fn lint(
 ) -> FlowBuildResult<FlowDescription> {
   let dir = dir.into();
   let top = SystemVerilogTop { top, libs: project.sv_lib.values().collect() };
+  let flist_file = dir.join("flist/top.f");
+
+  let collector = Node {
+    required_paths: vec![
+      dir.join("slang_lint/run.msgpack"),
+      dir.join("verilator_lint/run.msgpack"),
+    ],
+    commands: vec![],
+  };
 
   let nodes = BTreeMap::from([
     ("flist".to_string(), top.flist_node()?),
-    ("slang_lint".to_string(), top.slang_lint_node(dir.join("flist/top.f"))?),
+    ("slang_lint".to_string(), top.slang_lint_node(&flist_file)?),
+    ("verilator_lint".to_string(), top.verilator_lint_node(flist_file)?),
+    ("all_lints".to_string(), collector),
   ]);
 
   Ok(FlowDescription {
@@ -65,7 +80,7 @@ pub fn lint(
 
 pub fn get_executable(name: &str) -> Result<Utf8PathBuf, FlowBuildError> {
   use FlowBuildError::*;
-  let path = which("slang").map_err(|e| ExecutableFindError(name.to_string(), e))?;
+  let path = which(name).map_err(|e| ExecutableFindError(name.to_string(), e))?;
   Utf8PathBuf::from_path_buf(path).map_err(NonUtf8Path)
 }
 
@@ -95,6 +110,10 @@ impl<'s> SystemVerilogTop<'s> {
     self.libs.iter().flat_map(|l| l.sources.iter())
   }
 
+  fn verilator_waiver_files(&self) -> impl Iterator<Item = Utf8PathBuf> {
+    self.source_paths().flat_map(|l| files_with_extension(l, "vlt"))
+  }
+
   fn slang_depfiles(&self) -> FlowBuildResult<Command> {
     let args = self
       .include_paths()
@@ -119,7 +138,29 @@ impl<'s> SystemVerilogTop<'s> {
     let mut required_paths = self.required_paths();
     required_paths.push(flist_path);
 
-    let commands = vec![ExternalCommand { exec: get_executable("slang")?, args, ..Default::default() }.into()];
+    let commands =
+      vec![ExternalCommand { exec: get_executable("slang")?, args, ..Default::default() }.into()];
+
+    Ok(Node { required_paths, commands })
+  }
+
+  fn verilator_lint_node(&self, flist_path: impl Into<Utf8PathBuf>) -> FlowBuildResult<Node> {
+    let flist_path = flist_path.into();
+    let waiver_files: Vec<_> = self.verilator_waiver_files().collect();
+
+    let args = ["--top-module", self.top, "-f", flist_path.as_str(), "--lint-only"]
+      .into_iter()
+      .chain(waiver_files.iter().map(|p| p.as_str()))
+      .map(str::to_string)
+      .collect();
+
+    let mut required_paths = self.required_paths();
+    required_paths.push(flist_path);
+    required_paths.extend(waiver_files);
+
+    let commands = vec![
+      ExternalCommand { exec: get_executable("verilator")?, args, ..Default::default() }.into(),
+    ];
 
     Ok(Node { required_paths, commands })
   }
@@ -130,36 +171,50 @@ impl<'s> SystemVerilogTop<'s> {
   }
 }
 
+async fn get_includes(
+  includes_file: impl AsRef<Utf8Path>,
+) -> Result<BTreeSet<Utf8PathBuf>, &'static str> {
+  let include_read_err = |_| "Failed to read includes.f";
+  let mut includes =
+    File::open(includes_file.as_ref()).await.map_err(include_read_err).map(BufReader::new)?.lines();
+
+  let mut include_dirs = BTreeSet::new();
+  while let Some(file) = includes.next_line().await.map_err(include_read_err)? {
+    let mut dir = Utf8PathBuf::from(file);
+    dir.pop();
+    include_dirs.insert(dir);
+  }
+  Ok(include_dirs)
+}
+
+fn files_with_extension(dir: impl AsRef<Utf8Path>, ext: &str) -> impl Iterator<Item = Utf8PathBuf> {
+  WalkDir::new(dir.as_ref())
+    .into_iter()
+    .filter_map(Result::ok)
+    .filter(|entry| entry.file_type().is_file())
+    .filter(|entry| entry.path().extension().is_some_and(|entry_ext| *entry_ext == *ext))
+    .filter_map(|entry| Utf8PathBuf::from_path_buf(entry.into_path()).ok())
+}
+
 async fn generate_flist(node_dir: &Utf8Path) -> CommandResult {
   let body = async move {
-    let include_read_err = |_| "Failed to read includes.f";
     let write_err = |_| "Failed to write to top.f";
-    let mut includes = File::open(node_dir.join("includes.f"))
-      .await
-      .map_err(include_read_err)
-      .map(BufReader::new)?;
 
     let mut output = File::create(node_dir.join("top.f"))
       .await
       .map_err(|_| "Failed to read top.f")
       .map(BufWriter::new)?;
 
-    let prefix = b"+incdir+";
-    let mut line_buffer = Vec::new();
-
-    while includes.read_until(b'\n', &mut line_buffer).await.map_err(include_read_err)? > 0 {
-      output.write_all(prefix).await.map_err(write_err)?;
-      output.write_all(&line_buffer).await.map_err(write_err)?;
-
-      line_buffer.clear();
+    for include_dir in get_includes(node_dir.join("includes.f")).await?.into_iter() {
+      output.write_all(b"+incdir+").await.map_err(write_err)?;
+      output.write_all(include_dir.as_str().as_bytes()).await.map_err(write_err)?;
+      output.write_all(b"\n").await.map_err(write_err)?;
     }
 
-    let mut modules = File::open(node_dir.join("modules.f"))
-      .await
-      .map_err(|_| "Failed to open modules.f")
-      .map(BufReader::new)?;
+    let mut modules =
+      File::open(node_dir.join("modules.f")).await.map_err(|_| "Failed to open modules.f")?;
 
-    io::copy(&mut modules, &mut output).await.map_err(|_| "")?;
+    io::copy(&mut modules, &mut output).await.map_err(|_| "Couldn't append modules.f to top.f")?;
 
     output.flush().await.map_err(write_err)?;
     Result::<(), &'static str>::Ok(())
