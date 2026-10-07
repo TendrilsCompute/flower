@@ -63,7 +63,7 @@ macro_rules! add_internal_command {
 #[macro_export]
 macro_rules! internal_commands {
   ($($name:expr => $func:ident),* $(,)?) => {{
-    let mut map: $crate::command::InternalCommands = Default::default();
+    let mut map: $crate::flow::command::InternalCommands = Default::default();
     $(
       $crate::add_internal_command!(map, $name, $func);
     )*

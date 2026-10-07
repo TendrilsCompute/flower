@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use camino::Utf8PathBuf;
-use flower::{command::ExternalCommand, node::Node};
+use flower::flow::{command::ExternalCommand, node::Node};
 use serde::{Deserialize, Serialize};
 
 use crate::sv::SystemVerilogTop;

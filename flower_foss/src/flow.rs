@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
 
 use camino::Utf8PathBuf;
-use flower::{command::InternalCommands, flow::FlowDescription, internal_commands, node::Node};
+use flower::internal_commands;
+use flower::flow::{command::InternalCommands, FlowDescription, node::Node};
 
 use crate::{
   FlowBuildResult,

@@ -1,6 +1,6 @@
 use camino::{Utf8Path, Utf8PathBuf};
-use flower::{
-  add_internal_command,
+use flower::add_internal_command;
+use flower::flow::{
   command::{Command, CommandResult, ExternalCommand, InternalCommands},
   node::Node,
 };
