@@ -1,12 +1,12 @@
-use camino::Utf8Path;
-use tokio::{fs, io};
-
 pub mod command;
 pub mod flow;
 pub mod node;
 
 pub mod hash;
 pub mod serialization;
+
+use camino::Utf8Path;
+use tokio::{fs, io};
 
 pub async fn clean_dir(path: &Utf8Path) -> io::Result<()> {
   match fs::remove_dir_all(path).await {

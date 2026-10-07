@@ -54,7 +54,9 @@ pub type InternalCommands = BTreeMap<String, InternalCommand>;
 #[macro_export]
 macro_rules! add_internal_command {
   ($map:expr, $name:expr, $func:ident) => {
-    $map.insert($name.to_string(), (|path| Box::pin($func(path))));
+    if $map.insert($name.to_string(), (|path| Box::pin($func(path)))).is_some() {
+      panic!("Tried to insert multiple internal commands with the same name: {}", $name);
+    }
   };
 }
 
