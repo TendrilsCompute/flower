@@ -21,11 +21,15 @@ struct Cli {
   /// Run directory
   #[arg(short, long, default_value_t = Utf8PathBuf::from("./run"))]
   dir: Utf8PathBuf,
+
+  /// Force rerun
+  #[arg(short, long)]
+  force_rerun: bool,
 }
 
 #[tokio::main(flavor = "local")]
 async fn main() -> PetalResult<()> {
-  let Cli { node_name, mut project_file, dir } = Cli::parse();
+  let Cli { node_name, mut project_file, dir, force_rerun } = Cli::parse();
 
   tracing_subscriber::fmt::init();
 
@@ -47,7 +51,7 @@ async fn main() -> PetalResult<()> {
 
   let flow = system_verilog_flows(dir, "graft_engine", &project)?;
 
-  FlowRunner::from(flow).spawn_node(&node_name, true).await?;
+  FlowRunner::from(flow).spawn_node(&node_name, force_rerun).await?;
 
   Ok(())
 }

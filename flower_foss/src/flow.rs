@@ -40,7 +40,7 @@ pub fn system_verilog_flows(
     ("slang_lint".to_string(), slang.lint(&flist_file)?),
     ("verilator_lint".to_string(), verilator.lint(&flist_file)?),
     ("all_lints".to_string(), collector),
-    ("verilator_build".to_string(), verilator.build(flist_file)?),
+    ("verilator_build".to_string(), verilator.build(flist_file, [])?),
   ]);
 
   Ok(FlowDescription {

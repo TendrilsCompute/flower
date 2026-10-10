@@ -13,7 +13,9 @@ pub fn get_executable(name: &str) -> ConstructionResult<Utf8PathBuf> {
   Utf8PathBuf::from_path_buf(path).map_err(NonUtf8Path)
 }
 
-pub fn generate_path<'a>(execs: impl IntoIterator<Item = &'a str>) -> ConstructionResult<String> {
+pub fn generate_path_list<'a>(
+  execs: impl IntoIterator<Item = &'a str>,
+) -> ConstructionResult<String> {
   let mut paths = BTreeSet::new();
   for exec in execs {
     let mut path = get_executable(exec)?;

@@ -2,7 +2,9 @@ use std::collections::BTreeMap;
 
 use camino::Utf8PathBuf;
 use flower::flow::{command::ExternalCommand, node::Node};
-use flower_construct::{ConstructionResult, generate_path, get_executable, path::files_with_extension};
+use flower_construct::{
+  ConstructionResult, generate_path_list, get_executable, path::files_with_extension,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::sv::SystemVerilogTop;
@@ -49,11 +51,15 @@ impl<'a> Verilator<'a> {
     self.base_node(flist_path, ["--lint-only"], Default::default())
   }
 
-  pub fn build(&self, flist_path: impl Into<Utf8PathBuf>) -> ConstructionResult<Node> {
+  pub fn build<'args>(
+    &self,
+    flist_path: impl Into<Utf8PathBuf>,
+    additional_args: impl IntoIterator<Item = &'args str>,
+  ) -> ConstructionResult<Node> {
     let env = BTreeMap::from([(
       "PATH".to_string(),
-      generate_path(["make", "g++", "uname", "sh", "python3", "xargs"])?,
+      generate_path_list(["make", "g++", "uname", "sh", "python3", "xargs"])?,
     )]);
-    self.base_node(flist_path, ["--binary"], env)
+    self.base_node(flist_path, ["--binary"].into_iter().chain(additional_args), env)
   }
 }
