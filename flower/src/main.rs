@@ -3,7 +3,7 @@ use std::io::{self, Write};
 use camino::Utf8PathBuf;
 use clap::{Parser, Subcommand};
 
-use flower::hash::PathHasher;
+use flower::util::hash::PathHasher;
 
 #[derive(Parser)]
 struct Cli {

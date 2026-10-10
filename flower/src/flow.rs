@@ -1,5 +1,5 @@
-pub mod node;
 pub mod command;
+pub mod node;
 
 use camino::Utf8PathBuf;
 use futures::future::{BoxFuture, FutureExt, Shared};
@@ -12,7 +12,7 @@ use thiserror::Error;
 use tokio::{sync::Mutex, task::JoinError};
 use tracing::debug;
 
-use crate::hash::PathHasher;
+use crate::util::hash::PathHasher;
 use command::InternalCommands;
 use node::{Node, NodeError};
 

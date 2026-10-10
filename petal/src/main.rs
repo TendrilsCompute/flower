@@ -1,15 +1,15 @@
-mod path;
-
 use std::path::PathBuf;
 
 use camino::Utf8PathBuf;
 use clap::Parser;
-use flower::flow::{FlowError, FlowRunner};
+use flower::util::path::{canonicalize_on, current_dir, find_file_in_parents};
+use flower::{
+  construct::ConstructionError,
+  flow::{FlowError, FlowRunner},
+};
 use flower_foss::{FlowBuildError, flow::system_verilog_flows, project::Project};
 use thiserror::Error;
 use tokio::{fs, io};
-
-use crate::path::{canonicalize_on, current_dir, find_file_in_parents};
 
 #[derive(Parser)]
 struct Cli {
@@ -61,6 +61,8 @@ pub enum PetalError {
   IoError(Utf8PathBuf, io::Error),
   #[error("Non-utf8 path: {0}")]
   NonUtf8Path(PathBuf),
+  #[error("Flow construction error: {0}")]
+  Construction(#[from] ConstructionError),
   #[error("Flow build error: {0}")]
   FlowBuild(#[from] FlowBuildError),
   #[error("Flow error: {0}")]

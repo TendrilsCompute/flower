@@ -8,11 +8,13 @@ use tokio::io;
 use tokio::sync::Mutex;
 use tracing::{debug, info};
 
-use crate::clean_dir;
 use super::command::CommandError;
 use super::command::{Command, CommandResult, ExitStatus, InternalCommands};
-use crate::hash::{HashingError, PathHash, PathHasher};
-use crate::serialization::{self, SerializationError};
+use crate::clean_dir;
+use crate::util::{
+  hash::{HashingError, PathHash, PathHasher},
+  serialization::{self, SerializationError},
+};
 
 type NodeResult<T> = Result<T, NodeError>;
 
