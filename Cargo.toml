@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["flower", "flower_foss", "petal"]
+members = ["flower", "flower_construct", "flower_foss", "petal"]
 
 [workspace.package]
 version = "0.0.1"

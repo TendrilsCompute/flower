@@ -3,9 +3,9 @@ use std::collections::BTreeMap;
 use camino::Utf8PathBuf;
 use flower::flow::{FlowDescription, command::InternalCommands, node::Node};
 use flower::internal_commands;
+use flower_construct::ConstructionResult;
 
 use crate::{
-  FlowBuildResult,
   project::Project,
   sv::SystemVerilogTop,
   tool::{
@@ -18,7 +18,7 @@ pub fn system_verilog_flows(
   dir: impl Into<Utf8PathBuf>,
   top: &str,
   project: &Project,
-) -> FlowBuildResult<FlowDescription> {
+) -> ConstructionResult<FlowDescription> {
   let dir = dir.into();
   let design = SystemVerilogTop { top, libs: project.sv_lib.values().collect() };
   let flist_file = dir.join("flist/top.f");

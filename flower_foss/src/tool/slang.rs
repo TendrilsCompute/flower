@@ -4,13 +4,14 @@ use flower::flow::{
   command::{Command, CommandResult, ExternalCommand, InternalCommands},
   node::Node,
 };
+use flower_construct::{ConstructionResult, get_executable};
 use std::collections::BTreeSet;
 use tokio::{
   fs::File,
   io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter},
 };
 
-use crate::{FlowBuildResult, get_executable, sv::SystemVerilogTop};
+use crate::sv::SystemVerilogTop;
 
 pub struct Slang<'a> {
   pub design: &'a SystemVerilogTop<'a>,
@@ -22,7 +23,7 @@ impl<'a> From<&'a SystemVerilogTop<'a>> for Slang<'a> {
 }
 
 impl<'a> Slang<'a> {
-  fn depfiles(&self) -> FlowBuildResult<Command> {
+  fn depfiles(&self) -> ConstructionResult<Command> {
     let args = self
       .design
       .include_paths()
@@ -46,13 +47,13 @@ impl<'a> Slang<'a> {
     Ok(ExternalCommand { exec: get_executable("slang")?, args, ..Default::default() }.into())
   }
 
-  pub fn flist(&self, builtins: &mut InternalCommands) -> FlowBuildResult<Node> {
+  pub fn flist(&self, builtins: &mut InternalCommands) -> ConstructionResult<Node> {
     add_internal_command!(builtins, "flist_from_slang", flist_from_slang);
     let commands = vec![self.depfiles()?, Command::internal("flist_from_slang")];
     Ok(Node { required_paths: self.design.required_paths(), commands })
   }
 
-  pub fn lint(&self, flist_path: impl Into<Utf8PathBuf>) -> FlowBuildResult<Node> {
+  pub fn lint(&self, flist_path: impl Into<Utf8PathBuf>) -> ConstructionResult<Node> {
     let flist_path = flist_path.into();
 
     let args = ["--top", self.design.top, "-f", flist_path.as_str()]

@@ -1,0 +1,13 @@
+[package]
+name = "flower_construct"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+flower = { path = "../flower" }
+tokio.workspace = true
+camino.workspace = true
+serde.workspace = true
+which.workspace = true
+thiserror.workspace = true
+walkdir.workspace = true

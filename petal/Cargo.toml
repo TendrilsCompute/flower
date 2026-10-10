@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 flower = { path = "../flower" }
+flower_construct = { path = "../flower_construct" }
 flower_foss = { path = "../flower_foss" }
 tokio.workspace = true
 toml.workspace = true

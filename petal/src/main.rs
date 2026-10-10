@@ -2,12 +2,12 @@ use std::path::PathBuf;
 
 use camino::Utf8PathBuf;
 use clap::Parser;
-use flower::util::path::{canonicalize_on, current_dir, find_file_in_parents};
-use flower::{
-  construct::ConstructionError,
-  flow::{FlowError, FlowRunner},
+use flower::flow::{FlowError, FlowRunner};
+use flower_construct::{
+  ConstructionError,
+  path::{canonicalize_on, current_dir, find_file_in_parents},
 };
-use flower_foss::{FlowBuildError, flow::system_verilog_flows, project::Project};
+use flower_foss::{flow::system_verilog_flows, project::Project};
 use thiserror::Error;
 use tokio::{fs, io};
 
@@ -63,8 +63,6 @@ pub enum PetalError {
   NonUtf8Path(PathBuf),
   #[error("Flow construction error: {0}")]
   Construction(#[from] ConstructionError),
-  #[error("Flow build error: {0}")]
-  FlowBuild(#[from] FlowBuildError),
   #[error("Flow error: {0}")]
   Flow(#[from] FlowError),
   #[error("No project file found")]

@@ -2,10 +2,10 @@ use std::collections::BTreeMap;
 
 use camino::Utf8PathBuf;
 use flower::flow::{command::ExternalCommand, node::Node};
+use flower_construct::{ConstructionResult, generate_path, get_executable, path::files_with_extension};
 use serde::{Deserialize, Serialize};
 
 use crate::sv::SystemVerilogTop;
-use crate::{FlowBuildResult, files_with_extension, generate_path, get_executable};
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct VerilatorConfig;
@@ -25,7 +25,7 @@ impl<'a> Verilator<'a> {
     flist_path: impl Into<Utf8PathBuf>,
     additional_args: impl IntoIterator<Item = &'args str>,
     env: BTreeMap<String, String>,
-  ) -> FlowBuildResult<Node> {
+  ) -> ConstructionResult<Node> {
     let flist_path = flist_path.into();
     let waiver_files: Vec<_> = self.verilator_waiver_files().collect();
 
@@ -45,11 +45,11 @@ impl<'a> Verilator<'a> {
     Ok(Node { required_paths, commands })
   }
 
-  pub fn lint(&self, flist_path: impl Into<Utf8PathBuf>) -> FlowBuildResult<Node> {
+  pub fn lint(&self, flist_path: impl Into<Utf8PathBuf>) -> ConstructionResult<Node> {
     self.base_node(flist_path, ["--lint-only"], Default::default())
   }
 
-  pub fn build(&self, flist_path: impl Into<Utf8PathBuf>) -> FlowBuildResult<Node> {
+  pub fn build(&self, flist_path: impl Into<Utf8PathBuf>) -> ConstructionResult<Node> {
     let env = BTreeMap::from([(
       "PATH".to_string(),
       generate_path(["make", "g++", "uname", "sh", "python3", "xargs"])?,

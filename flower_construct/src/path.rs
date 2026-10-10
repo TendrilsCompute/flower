@@ -2,8 +2,9 @@ use std::env;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use tokio::fs;
+use walkdir::WalkDir;
 
-use crate::construct::{ConstructionError, ConstructionResult};
+use crate::{ConstructionError, ConstructionResult};
 
 pub async fn canonicalize(path: &Utf8Path) -> ConstructionResult<Utf8PathBuf> {
   let canonicalized = fs::canonicalize(path)
@@ -42,4 +43,16 @@ pub async fn find_file_in_parents(
     }
   }
   Ok(None)
+}
+
+pub fn files_with_extension(
+  dir: impl AsRef<Utf8Path>,
+  ext: &str,
+) -> impl Iterator<Item = Utf8PathBuf> {
+  WalkDir::new(dir.as_ref())
+    .into_iter()
+    .filter_map(Result::ok)
+    .filter(|entry| entry.file_type().is_file())
+    .filter(|entry| entry.path().extension().is_some_and(|entry_ext| *entry_ext == *ext))
+    .filter_map(|entry| Utf8PathBuf::from_path_buf(entry.into_path()).ok())
 }

@@ -275,17 +275,29 @@ dependencies = [
 ]
 
 [[package]]
-name = "flower_foss"
+name = "flower_construct"
 version = "0.0.1"
 dependencies = [
  "camino",
  "flower",
- "futures",
  "serde",
  "thiserror",
  "tokio",
  "walkdir",
  "which",
+]
+
+[[package]]
+name = "flower_foss"
+version = "0.0.1"
+dependencies = [
+ "camino",
+ "flower",
+ "flower_construct",
+ "futures",
+ "serde",
+ "thiserror",
+ "tokio",
 ]
 
 [[package]]
@@ -487,6 +499,7 @@ dependencies = [
  "camino",
  "clap",
  "flower",
+ "flower_construct",
  "flower_foss",
  "serde",
  "thiserror",
