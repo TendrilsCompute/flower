@@ -115,7 +115,7 @@ impl Node {
     let mut hasher = hasher.lock().await;
     let mut hashes = BTreeMap::<Utf8PathBuf, PathHash>::new();
     for path in &self.required_paths {
-      let hash = hasher.hash(path)?;
+      let hash = hasher.hash(path).await?;
       hashes.insert(path.into(), hash);
     }
     Ok(hashes)
@@ -136,7 +136,7 @@ impl NodeRunInfo {
   ) -> Result<bool, HashingError> {
     for path in paths {
       let Some(previous_hash) = self.required_path_hashes.get(path) else { return Ok(false) };
-      let hash = hasher.hash(path)?;
+      let hash = hasher.hash(path).await?;
       if hash != *previous_hash {
         return Ok(false);
       }

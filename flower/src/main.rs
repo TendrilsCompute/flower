@@ -17,10 +17,11 @@ enum Command {
   Hash { path: Utf8PathBuf },
 }
 
-fn main() {
+#[tokio::main(flavor = "local")]
+async fn main() {
   let Command::Hash { path } = Cli::parse().command;
 
-  let hash = PathHasher::default().hash(&path).unwrap();
+  let hash = PathHasher::default().hash(&path).await.unwrap();
 
   io::stdout().lock().write_all(&hash).unwrap();
 }
