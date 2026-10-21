@@ -24,8 +24,8 @@ pub fn system_verilog_flows(
 
   let collector = Node {
     required_paths: vec![
-      dir.join("slang_lint/run.msgpack"),
-      dir.join("verilator_lint/run.msgpack"),
+      dir.join("slang_lint/run.msgpackz"),
+      dir.join("verilator_lint/run.msgpackz"),
     ],
     commands: vec![],
   };

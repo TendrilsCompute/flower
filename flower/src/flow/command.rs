@@ -1,6 +1,6 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use futures::future::BoxFuture;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use std::collections::BTreeMap;
 use thiserror::Error;
 use tokio::{fs, io, process};
@@ -124,9 +124,16 @@ impl From<&str> for Arg {
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct CommandResult {
+  #[serde(serialize_with = "as_bytes")]
   pub stdout: Vec<u8>,
+  #[serde(serialize_with = "as_bytes")]
   pub stderr: Vec<u8>,
   pub status: ExitStatus,
+}
+
+/// If this function isn't used, an empty `Vec<u8>` isn't serialized as bytes.
+fn as_bytes<S: Serializer>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error> {
+  serializer.serialize_bytes(bytes)
 }
 
 impl ExternalCommand {

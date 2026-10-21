@@ -158,11 +158,11 @@ impl NodeRunInfo {
 }
 
 impl NodeManifest for Node {
-  const MANIFEST_FILE: &'static str = "info.msgpack";
+  const MANIFEST_FILE: &'static str = "info.msgpackz";
 }
 
 impl NodeManifest for NodeRunInfo {
-  const MANIFEST_FILE: &'static str = "run.msgpack";
+  const MANIFEST_FILE: &'static str = "run.msgpackz";
 }
 
 trait NodeManifest
