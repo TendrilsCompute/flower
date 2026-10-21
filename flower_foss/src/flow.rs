@@ -2,14 +2,13 @@ use std::collections::BTreeMap;
 
 use camino::Utf8PathBuf;
 use flower::flow::{FlowDescription, command::InternalCommands, node::Node};
-use flower::internal_commands;
 use flower_construct::ConstructionResult;
 
 use crate::{
   project::Project,
   sv::SystemVerilogTop,
   tool::{
-    slang::{Slang, flist_from_slang},
+    slang::Slang,
     verilator::Verilator,
   },
 };
@@ -43,9 +42,5 @@ pub fn system_verilog_flows(
     ("verilator_build".to_string(), verilator.build(flist_file, [])?),
   ]);
 
-  Ok(FlowDescription {
-    dir,
-    nodes,
-    internal_cmds: internal_commands!("flist_from_slang" => flist_from_slang),
-  })
+  Ok(FlowDescription { dir, nodes, internal_cmds })
 }

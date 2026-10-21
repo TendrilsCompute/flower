@@ -2,21 +2,11 @@ use camino::{Utf8Path, Utf8PathBuf};
 use rmp_serde::{Serializer, config::BytesMode, decode, encode, from_slice};
 use serde::{Serialize, de::DeserializeOwned};
 use thiserror::Error;
-use tokio::{
-  fs,
-  io::{self, AsyncWriteExt},
-};
+use tokio::{fs, io};
 
 pub async fn write(thing: impl Serialize, path: &Utf8Path) -> SerializationResult<()> {
   let serialized = serialize(thing, path)?;
-
-  fs::File::create(path)
-    .await
-    .map_err(io_err(path))?
-    .write_all(&serialized)
-    .await
-    .map_err(io_err(path))?;
-  Ok(())
+  fs::write(path, serialized).await.map_err(io_err(path))
 }
 
 pub async fn read<T: DeserializeOwned>(path: &Utf8Path) -> SerializationResult<T> {

@@ -13,8 +13,14 @@ use tokio::{fs, io};
 
 #[derive(Parser)]
 struct Cli {
-  node_name: String,
+  /// Top level
+  top_level: String,
 
+  /// Flow of the node
+  #[arg(short, long, default_value_t = "verilator_build".to_string())]
+  node: String,
+
+  /// Path to project description path
   #[arg(short, long)]
   project_file: Option<Utf8PathBuf>,
 
@@ -29,13 +35,18 @@ struct Cli {
 
 #[tokio::main(flavor = "local")]
 async fn main() -> PetalResult<()> {
-  let Cli { node_name, mut project_file, dir, force_rerun } = Cli::parse();
+  let Cli { top_level, node, mut project_file, dir, force_rerun } = Cli::parse();
 
   tracing_subscriber::fmt::init();
 
-  let project = {
-    let current_dir = current_dir()?;
+  let current_dir = current_dir()?;
 
+  let dir = {
+    fs::create_dir_all(&dir).await.map_err(|e| PetalError::IoError(dir.clone(), e))?;
+    canonicalize_on(&dir, &current_dir).await?
+  };
+
+  let project = {
     if project_file.is_none() {
       project_file = find_file_in_parents(&current_dir, "petal.toml").await?
     }
@@ -49,9 +60,9 @@ async fn main() -> PetalResult<()> {
     toml::from_str::<Project>(&project_source)?.with_paths_canonicalized_on(&path)
   };
 
-  let flow = system_verilog_flows(dir, "graft_engine", &project)?;
+  let flow = system_verilog_flows(dir, &top_level, &project)?;
 
-  FlowRunner::from(flow).spawn_node(&node_name, force_rerun).await?;
+  FlowRunner::from(flow).spawn_node(&node, force_rerun).await?;
 
   Ok(())
 }

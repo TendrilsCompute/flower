@@ -91,15 +91,22 @@ impl ExternalCommand {
     Ok(CommandResult {
       stdout: output.stdout,
       stderr: output.stderr,
-      status: output.status.code().unwrap_or(0),
+      status: exit_status_code(output.status),
     })
   }
+}
+
+/// A process terminated by a signal has no exit code;
+/// it is reported using the shell convention of 128 + signal number.
+fn exit_status_code(status: std::process::ExitStatus) -> ExitStatus {
+  use std::os::unix::process::ExitStatusExt;
+  status.code().or_else(|| status.signal().map(|signal| 128 + signal)).unwrap_or(-1)
 }
 
 impl From<&ExternalCommand> for process::Command {
   fn from(info: &ExternalCommand) -> Self {
     let mut cmd = Self::new(&info.exec);
-    cmd.env_clear().envs(&info.env).args(&info.args);
+    cmd.env_clear().envs(&info.env).args(&info.args).kill_on_drop(true);
     cmd
   }
 }

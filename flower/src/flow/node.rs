@@ -97,7 +97,8 @@ impl Node {
           info.required_path_hashes = hashes;
         }
         info.write(node_dir).await?;
-        return Err(NodeError::NonZeroExitStatus(status));
+        let run_info = NodeRunInfo::manifest_path(node_dir);
+        return Err(NodeError::NonZeroExitStatus { status, run_info });
       }
     }
 
@@ -186,6 +187,6 @@ pub enum NodeError {
   CreateNodeDir(io::Error),
   #[error("Failed to run command: {0}")]
   Execute(#[from] CommandError),
-  #[error("Executable terminiated with status {0}")]
-  NonZeroExitStatus(ExitStatus),
+  #[error("Executable terminated with status {status} (see {run_info})")]
+  NonZeroExitStatus { status: ExitStatus, run_info: Utf8PathBuf },
 }
