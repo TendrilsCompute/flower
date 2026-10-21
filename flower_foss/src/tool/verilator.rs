@@ -1,7 +1,10 @@
 use std::collections::BTreeMap;
 
 use camino::Utf8PathBuf;
-use flower::flow::{command::ExternalCommand, node::Node};
+use flower::flow::{
+  command::{Arg, ExternalCommand},
+  node::Node,
+};
 use flower_construct::{
   ConstructionResult, generate_path_list, get_executable, path::files_with_extension,
 };
@@ -35,7 +38,7 @@ impl<'a> Verilator<'a> {
       .into_iter()
       .chain(waiver_files.iter().map(|p| p.as_str()))
       .chain(additional_args.into_iter().map(|a| a as &str))
-      .map(str::to_string)
+      .map(Arg::from)
       .collect();
 
     let mut required_paths = self.design.required_paths();

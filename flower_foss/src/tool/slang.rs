@@ -1,7 +1,7 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use flower::add_internal_command;
 use flower::flow::{
-  command::{Command, CommandResult, ExternalCommand, InternalCommands},
+  command::{Arg, Command, CommandResult, ExternalCommand, InternalCommands},
   node::Node,
 };
 use flower_construct::{ConstructionResult, get_executable};
@@ -42,6 +42,7 @@ impl<'a> Slang<'a> {
         .into_iter()
         .map(str::to_string),
       )
+      .map(Arg::from)
       .collect();
 
     Ok(ExternalCommand { exec: get_executable("slang")?, args, ..Default::default() }.into())
@@ -56,10 +57,7 @@ impl<'a> Slang<'a> {
   pub fn lint(&self, flist_path: impl Into<Utf8PathBuf>) -> ConstructionResult<Node> {
     let flist_path = flist_path.into();
 
-    let args = ["--top", self.design.top, "-f", flist_path.as_str()]
-      .into_iter()
-      .map(str::to_string)
-      .collect();
+    let args = ["--top", self.design.top, "-f", flist_path.as_str()].map(Arg::from).into();
 
     let mut required_paths = self.design.required_paths();
     required_paths.push(flist_path);

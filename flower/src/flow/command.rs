@@ -3,7 +3,7 @@ use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use thiserror::Error;
-use tokio::{io, process};
+use tokio::{fs, io, process};
 
 pub type ExitStatus = i32;
 
@@ -28,6 +28,18 @@ impl Command {
     match self {
       Self::Internal { no_check, .. } | Self::External { no_check, .. } => *no_check,
     }
+  }
+
+  /// The files this command reads its arguments from.
+  pub fn arg_files(&self) -> impl Iterator<Item = &Utf8PathBuf> {
+    let args = match self {
+      Self::External { command, .. } => command.args.as_slice(),
+      Self::Internal { .. } => &[],
+    };
+    args.iter().filter_map(|arg| match arg {
+      Arg::Lines(path) => Some(path),
+      Arg::Literal(_) => None,
+    })
   }
 
   pub async fn run(
@@ -75,7 +87,39 @@ macro_rules! internal_commands {
 pub struct ExternalCommand {
   pub env: BTreeMap<String, String>,
   pub exec: Utf8PathBuf,
-  pub args: Vec<String>,
+  pub args: Vec<Arg>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum Arg {
+  Literal(String),
+  /// One argument per non-blank line of a file, read just before the command runs.
+  /// A relative path is relative to the node's directory.
+  Lines(Utf8PathBuf),
+}
+impl Arg {
+  async fn resolve(&self, run_dir: &Utf8Path) -> Result<Vec<String>, CommandError> {
+    match self {
+      Self::Literal(arg) => Ok(vec![arg.clone()]),
+      Self::Lines(path) => {
+        let path = run_dir.join(path);
+        let contents =
+          fs::read_to_string(&path).await.map_err(|err| CommandError::ArgFile(path, err))?;
+        Ok(contents.lines().filter(|line| !line.trim().is_empty()).map(str::to_string).collect())
+      }
+    }
+  }
+}
+
+impl From<String> for Arg {
+  fn from(arg: String) -> Self {
+    Self::Literal(arg)
+  }
+}
+impl From<&str> for Arg {
+  fn from(arg: &str) -> Self {
+    Self::Literal(arg.to_string())
+  }
 }
 
 #[derive(Default, Debug, Serialize, Deserialize)]
@@ -86,8 +130,19 @@ pub struct CommandResult {
 }
 
 impl ExternalCommand {
-  pub async fn run(&self, run_dir: &Utf8Path) -> io::Result<CommandResult> {
-    let output = process::Command::from(self).current_dir(run_dir).output().await?;
+  pub async fn run(&self, run_dir: &Utf8Path) -> Result<CommandResult, CommandError> {
+    let mut args = Vec::new();
+    for arg in &self.args {
+      args.extend(arg.resolve(run_dir).await?);
+    }
+    let output = process::Command::new(&self.exec)
+      .env_clear()
+      .envs(&self.env)
+      .args(args)
+      .current_dir(run_dir)
+      .kill_on_drop(true)
+      .output()
+      .await?;
     Ok(CommandResult {
       stdout: output.stdout,
       stderr: output.stderr,
@@ -103,18 +158,12 @@ fn exit_status_code(status: std::process::ExitStatus) -> ExitStatus {
   status.code().or_else(|| status.signal().map(|signal| 128 + signal)).unwrap_or(-1)
 }
 
-impl From<&ExternalCommand> for process::Command {
-  fn from(info: &ExternalCommand) -> Self {
-    let mut cmd = Self::new(&info.exec);
-    cmd.env_clear().envs(&info.env).args(&info.args).kill_on_drop(true);
-    cmd
-  }
-}
-
 #[derive(Debug, Error)]
 pub enum CommandError {
   #[error("External command execution failed: {0}")]
   External(#[from] io::Error),
+  #[error("Failed to read arguments from {0}: {1}")]
+  ArgFile(Utf8PathBuf, io::Error),
   #[error("Internal command '{0}' not found.")]
   InternalCommandNotFound(String),
 }

@@ -1,4 +1,4 @@
-use camino::{Utf8Path, Utf8PathBuf};
+use camino::{Utf8Component, Utf8Path, Utf8PathBuf};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -25,6 +25,18 @@ pub struct Node {
 }
 
 impl Node {
+  /// Files arguments are read from must be inside the node's directory
+  /// (a relative path without `..`) or be covered by a required path,
+  /// otherwise changes to them wouldn't cause a rerun.
+  pub fn undeclared_arg_files(&self) -> impl Iterator<Item = &Utf8PathBuf> {
+    self.commands.iter().flat_map(Command::arg_files).filter(|path| {
+      let in_node_dir = path
+        .components()
+        .all(|component| matches!(component, Utf8Component::Normal(_) | Utf8Component::CurDir));
+      !in_node_dir && !self.required_paths.iter().any(|required| path.starts_with(required))
+    })
+  }
+
   pub async fn rerun_required(
     &self,
     node_dir: &Utf8Path,
