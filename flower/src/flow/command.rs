@@ -35,14 +35,17 @@ impl Command {
   /// the files its arguments are read from, or the files it writes from.
   pub fn input_files(&self) -> Vec<&Utf8PathBuf> {
     match self {
-      Self::External { command, .. } => command
-        .args
-        .iter()
-        .filter_map(|arg| match arg {
+      Self::External { command, .. } => {
+        let arg_files = command.args.iter().filter_map(|arg| match arg {
           Arg::Lines(path) => Some(path),
           Arg::Literal(_) => None,
-        })
-        .collect(),
+        });
+        let env_files = command.env.values().filter_map(|value| match value {
+          EnvValue::File(path) => Some(path),
+          EnvValue::Literal(_) => None,
+        });
+        arg_files.chain(env_files).collect()
+      }
       Self::Write { parts, .. } => parts.iter().filter_map(TextPart::path).collect(),
     }
   }
@@ -63,7 +66,7 @@ impl From<ExternalCommand> for Command {
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ExternalCommand {
-  pub env: BTreeMap<String, String>,
+  pub env: BTreeMap<String, EnvValue>,
   pub exec: Utf8PathBuf,
   pub args: Vec<Arg>,
   /// A file stdout is also written to. A relative path is relative to the node's directory.
@@ -102,6 +105,38 @@ impl From<&str> for Arg {
   }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum EnvValue {
+  Literal(String),
+  /// The contents of a file without leading or trailing whitespace, read just before the command
+  /// runs. A relative path is relative to the node's directory.
+  File(Utf8PathBuf),
+}
+impl EnvValue {
+  async fn resolve(&self, run_dir: &Utf8Path) -> Result<String, CommandError> {
+    match self {
+      Self::Literal(value) => Ok(value.clone()),
+      Self::File(path) => {
+        let path = run_dir.join(path);
+        let contents =
+          fs::read_to_string(&path).await.map_err(|err| CommandError::EnvFile(path, err))?;
+        Ok(contents.trim().to_string())
+      }
+    }
+  }
+}
+
+impl From<String> for EnvValue {
+  fn from(value: String) -> Self {
+    Self::Literal(value)
+  }
+}
+impl From<&str> for EnvValue {
+  fn from(value: &str) -> Self {
+    Self::Literal(value.to_string())
+  }
+}
+
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct CommandResult {
   #[serde(serialize_with = "as_bytes")]
@@ -122,9 +157,13 @@ impl ExternalCommand {
     for arg in &self.args {
       args.extend(arg.resolve(run_dir).await?);
     }
+    let mut env = BTreeMap::new();
+    for (name, value) in &self.env {
+      env.insert(name, value.resolve(run_dir).await?);
+    }
     let output = process::Command::new(&self.exec)
       .env_clear()
-      .envs(&self.env)
+      .envs(env)
       .args(args)
       .current_dir(run_dir)
       .kill_on_drop(true)
@@ -155,6 +194,8 @@ pub enum CommandError {
   External(#[from] io::Error),
   #[error("Failed to read arguments from {0}: {1}")]
   ArgFile(Utf8PathBuf, io::Error),
+  #[error("Failed to read an environment variable from {0}: {1}")]
+  EnvFile(Utf8PathBuf, io::Error),
   #[error("Failed to write stdout to {0}: {1}")]
   StdoutFile(Utf8PathBuf, io::Error),
 }

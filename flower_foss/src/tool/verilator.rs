@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use camino::Utf8PathBuf;
 use flower::flow::{
-  command::{Arg, ExternalCommand},
+  command::{Arg, EnvValue, ExternalCommand},
   node::Node,
 };
 use flower_construct::{
@@ -29,7 +29,7 @@ impl<'a> Verilator<'a> {
     &self,
     flist_path: impl Into<Utf8PathBuf>,
     additional_args: impl IntoIterator<Item = Arg>,
-    env: BTreeMap<String, String>,
+    env: BTreeMap<String, EnvValue>,
   ) -> ConstructionResult<Node> {
     let flist_path = flist_path.into();
     let waiver_files: Vec<_> = self.verilator_waiver_files().collect();
@@ -55,10 +55,10 @@ impl<'a> Verilator<'a> {
     self.base_node(flist_path, [Arg::from("--lint-only")], Default::default())
   }
 
-  fn build_env() -> ConstructionResult<BTreeMap<String, String>> {
+  fn build_env() -> ConstructionResult<BTreeMap<String, EnvValue>> {
     Ok(BTreeMap::from([(
       "PATH".to_string(),
-      generate_path_list(["make", "g++", "uname", "sh", "python3", "xargs"])?,
+      generate_path_list(["make", "g++", "uname", "sh", "python3", "xargs"])?.into(),
     )]))
   }
 

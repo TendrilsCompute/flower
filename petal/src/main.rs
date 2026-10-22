@@ -31,11 +31,16 @@ struct Cli {
   /// Force rerun
   #[arg(short, long)]
   force_rerun: bool,
+
+  /// Cocotb test parameter file, each run in a test of its own.
+  /// A directory stands for the `.json` files in it.
+  #[arg(short, long)]
+  test_params: Vec<Utf8PathBuf>,
 }
 
 #[tokio::main(flavor = "local")]
 async fn main() -> PetalResult<()> {
-  let Cli { top_level, node, mut project_file, dir, force_rerun } = Cli::parse();
+  let Cli { top_level, node, mut project_file, dir, force_rerun, test_params } = Cli::parse();
 
   tracing_subscriber::fmt::init();
 
@@ -60,7 +65,12 @@ async fn main() -> PetalResult<()> {
     toml::from_str::<Project>(&project_source)?.with_paths_canonicalized_on(&path)
   };
 
-  let flow = system_verilog_flows(dir, &top_level, &project)?;
+  let mut canonical_test_params = Vec::new();
+  for path in &test_params {
+    canonical_test_params.push(canonicalize_on(path, &current_dir).await?);
+  }
+
+  let flow = system_verilog_flows(dir, &top_level, &project, &canonical_test_params)?;
 
   FlowRunner::from(flow).spawn_node(&node, force_rerun).await?;
 
