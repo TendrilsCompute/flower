@@ -13,14 +13,12 @@ use tokio::{sync::Mutex, task::JoinError};
 use tracing::debug;
 
 use crate::util::hash::PathHasher;
-use command::InternalCommands;
 use node::{Node, NodeError};
 
 #[derive(Default)]
 pub struct FlowDescription {
   pub dir: Utf8PathBuf,
   pub nodes: BTreeMap<String, Node>,
-  pub internal_cmds: InternalCommands,
 }
 impl FlowDescription {
   pub fn node_dir(&self, name: &str) -> Utf8PathBuf {
@@ -84,14 +82,13 @@ impl FlowRunner {
       let node_dir = self.flow.node_dir(name);
       let name = name.to_string();
       let hasher = self.hasher.clone();
-      let internal_cmds = self.flow.internal_cmds.clone();
 
       async move {
         for dep_task in dep_tasks {
           dep_task.await?;
         }
         node
-          .run(&node_dir, &internal_cmds, hasher, force_rerun)
+          .run(&node_dir, hasher, force_rerun)
           .await
           .map_err(|err| FlowError::NodeError(name, err.into()))?;
         Ok(())

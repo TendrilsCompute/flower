@@ -80,7 +80,7 @@ impl<'a> Verilator<'a> {
     additional_args: impl IntoIterator<Item = &'args str>,
   ) -> ConstructionResult<Node> {
     let cocotb_args_file = cocotb_args_file.into();
-    let args = ["--exe", "--build", "--vpi", "--public-flat-rw", "--prefix", "Vtop"]
+    let args = ["--cc", "--exe", "--build", "--vpi", "--public-flat-rw", "--prefix", "Vtop"]
       .into_iter()
       .chain(additional_args)
       .map(Arg::from)

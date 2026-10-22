@@ -290,6 +290,7 @@ version = "0.0.1"
 dependencies = [
  "camino",
  "flower",
+ "regex",
  "serde",
  "thiserror",
  "tokio",
@@ -304,10 +305,7 @@ dependencies = [
  "camino",
  "flower",
  "flower_construct",
- "futures",
  "serde",
- "thiserror",
- "tokio",
 ]
 
 [[package]]

@@ -6,8 +6,5 @@ edition.workspace = true
 [dependencies]
 flower = { path = "../flower" }
 flower_construct = { path = "../flower_construct" }
-tokio.workspace = true
-futures.workspace = true
 camino.workspace = true
 serde.workspace = true
-thiserror.workspace = true

@@ -35,6 +35,8 @@ pub enum ConstructionError {
   NonUtf8Path(PathBuf),
   #[error("Failed to find executable '{0}': {1}")]
   ExecutableFindError(String, WhichError),
+  #[error("Invalid regex: {0}")]
+  InvalidRegex(#[from] regex::Error),
 }
 pub type ConstructionResult<T> = Result<T, ConstructionError>;
 

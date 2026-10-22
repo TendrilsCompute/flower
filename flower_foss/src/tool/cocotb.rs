@@ -1,5 +1,5 @@
 use flower::flow::{
-  command::{Arg, Command, ExternalCommand, Extract, TextPart},
+  command::{Arg, Command, ExternalCommand, Extract, FromFile, MatchCount},
   node::Node,
 };
 use flower_construct::{ConstructionResult, get_executable};
@@ -22,22 +22,22 @@ pub fn config() -> ConstructionResult<Node> {
   };
 
   // The library file is like "libcocotbvpi_verilator.so", but -l expects "cocotbvpi_verilator".
-  let link_name = Extract::new(r"/lib([^/\s]+)\.so\s*$", "$1").expect("The regex is valid.");
+  let link_name = Extract::new(r"/lib([^/\s]+)\.so\s*$", "$1")?;
 
   let verilator_args = vec![
     "-LDFLAGS\n-Wl,-rpath,".into(),
-    TextPart::file("libs_dir"),
+    FromFile::contents("libs_dir").into(),
     " -L".into(),
-    TextPart::file("libs_dir"),
+    FromFile::contents("libs_dir").into(),
     " -l".into(),
-    TextPart::Match { path: "vpi_lib".into(), extract: link_name },
+    FromFile::new("vpi_lib", link_name).count(MatchCount::ExactlyOne).into(),
     "\n".into(),
-    TextPart::file("share_dir"),
+    FromFile::contents("share_dir").into(),
     "/lib/verilator/verilator.cpp\n".into(),
   ];
 
   let commands = vec![
-    cocotb_config(&["--libs"], "libs_dir"),
+    cocotb_config(&["--lib-dir"], "libs_dir"),
     cocotb_config(&["--lib-name-path", "vpi", "verilator"], "vpi_lib"),
     cocotb_config(&["--share"], "share_dir"),
     Command::write(VERILATOR_ARGS_FILE, verilator_args),

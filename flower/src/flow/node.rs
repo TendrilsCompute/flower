@@ -9,7 +9,7 @@ use tokio::sync::Mutex;
 use tracing::{debug, info};
 
 use super::command::CommandError;
-use super::command::{Command, CommandResult, ExitStatus, InternalCommands};
+use super::command::{Command, CommandResult, ExitStatus};
 use crate::clean_dir;
 use crate::util::{
   hash::{HashingError, PathHash, PathHasher},
@@ -75,7 +75,6 @@ impl Node {
   pub async fn run(
     &self,
     node_dir: &Utf8Path,
-    builtins: &InternalCommands,
     hasher: Arc<Mutex<PathHasher>>,
     force_rerun: bool,
   ) -> NodeResult<()> {
@@ -99,7 +98,7 @@ impl Node {
     self.write(node_dir).await?;
 
     for command in &self.commands {
-      let exec_result = command.run(node_dir, builtins).await.map_err(NodeError::Execute)?;
+      let exec_result = command.run(node_dir).await.map_err(NodeError::Execute)?;
       let status = exec_result.status;
 
       info.results.push(exec_result);

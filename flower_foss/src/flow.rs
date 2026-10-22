@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use camino::Utf8PathBuf;
-use flower::flow::{FlowDescription, command::InternalCommands, node::Node};
+use flower::flow::{FlowDescription, node::Node};
 use flower_construct::ConstructionResult;
 
 use crate::{
@@ -31,9 +31,8 @@ pub fn system_verilog_flows(
   let slang = Slang::from(&design);
   let verilator = Verilator { design: &design, config: Default::default() };
 
-  let mut internal_cmds = InternalCommands::default();
   let nodes = BTreeMap::from([
-    ("flist".to_string(), slang.flist(&mut internal_cmds)?),
+    ("flist".to_string(), slang.flist()?),
     ("slang_lint".to_string(), slang.lint(&flist_file)?),
     ("verilator_lint".to_string(), verilator.lint(&flist_file)?),
     ("all_lints".to_string(), collector),
@@ -45,5 +44,5 @@ pub fn system_verilog_flows(
     ),
   ]);
 
-  Ok(FlowDescription { dir, nodes, internal_cmds })
+  Ok(FlowDescription { dir, nodes })
 }

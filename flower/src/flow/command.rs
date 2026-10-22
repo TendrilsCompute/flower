@@ -1,21 +1,16 @@
 use camino::{Utf8Path, Utf8PathBuf};
-use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize, Serializer};
 use std::collections::BTreeMap;
 use thiserror::Error;
 use tokio::{fs, io, process};
 
 mod write;
-pub use write::{Extract, TextPart};
+pub use write::{Extract, FromFile, MatchCount, TextPart};
 
 pub type ExitStatus = i32;
 
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub enum Command {
-  Internal {
-    name: String,
-    no_check: bool,
-  },
   External {
     #[serde(flatten)]
     command: ExternalCommand,
@@ -23,26 +18,16 @@ pub enum Command {
   },
   /// Writes a file from the parts, concatenated.
   /// A relative path is relative to the node's directory.
-  Write {
-    path: Utf8PathBuf,
-    parts: Vec<TextPart>,
-    no_check: bool,
-  },
+  Write { path: Utf8PathBuf, parts: Vec<TextPart>, no_check: bool },
 }
 impl Command {
-  pub fn internal(name: impl Into<String>) -> Self {
-    Self::Internal { name: name.into(), no_check: false }
-  }
-
   pub fn write(path: impl Into<Utf8PathBuf>, parts: Vec<TextPart>) -> Self {
     Self::Write { path: path.into(), parts, no_check: false }
   }
 
   pub fn no_check(&self) -> bool {
     match self {
-      Self::Internal { no_check, .. }
-      | Self::External { no_check, .. }
-      | Self::Write { no_check, .. } => *no_check,
+      Self::External { no_check, .. } | Self::Write { no_check, .. } => *no_check,
     }
   }
 
@@ -50,7 +35,6 @@ impl Command {
   /// the files its arguments are read from, or the files it writes from.
   pub fn input_files(&self) -> Vec<&Utf8PathBuf> {
     match self {
-      Self::Internal { .. } => vec![],
       Self::External { command, .. } => command
         .args
         .iter()
@@ -63,14 +47,9 @@ impl Command {
     }
   }
 
-  pub async fn run(
-    &self,
-    run_dir: &Utf8Path,
-    builtins: &InternalCommands,
-  ) -> Result<CommandResult, CommandError> {
+  pub async fn run(&self, run_dir: &Utf8Path) -> Result<CommandResult, CommandError> {
     Ok(match self {
       Self::External { command, .. } => command.run(run_dir).await?,
-      Self::Internal { name, .. } => builtins.get(name).ok_or(name)?(run_dir).await,
       Self::Write { path, parts, .. } => write::run(run_dir, path, parts).await,
     })
   }
@@ -80,29 +59,6 @@ impl From<ExternalCommand> for Command {
   fn from(command: ExternalCommand) -> Self {
     Self::External { command, no_check: false }
   }
-}
-
-pub type InternalCommand = for<'p> fn(&'p Utf8Path) -> BoxFuture<'p, CommandResult>;
-pub type InternalCommands = BTreeMap<String, InternalCommand>;
-
-#[macro_export]
-macro_rules! add_internal_command {
-  ($map:expr, $name:expr, $func:ident) => {
-    if $map.insert($name.to_string(), (|path| Box::pin($func(path)))).is_some() {
-      panic!("Tried to insert multiple internal commands with the same name: {}", $name);
-    }
-  };
-}
-
-#[macro_export]
-macro_rules! internal_commands {
-  ($($name:expr => $func:ident),* $(,)?) => {{
-    let mut map: $crate::flow::command::InternalCommands = Default::default();
-    $(
-      $crate::add_internal_command!(map, $name, $func);
-    )*
-    map
-  }};
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
@@ -201,11 +157,4 @@ pub enum CommandError {
   ArgFile(Utf8PathBuf, io::Error),
   #[error("Failed to write stdout to {0}: {1}")]
   StdoutFile(Utf8PathBuf, io::Error),
-  #[error("Internal command '{0}' not found.")]
-  InternalCommandNotFound(String),
-}
-impl From<&String> for CommandError {
-  fn from(value: &String) -> Self {
-    Self::InternalCommandNotFound(value.clone())
-  }
 }
