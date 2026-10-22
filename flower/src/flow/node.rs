@@ -25,11 +25,11 @@ pub struct Node {
 }
 
 impl Node {
-  /// Files arguments are read from must be inside the node's directory
+  /// Files commands read must be inside the node's directory
   /// (a relative path without `..`) or be covered by a required path,
   /// otherwise changes to them wouldn't cause a rerun.
-  pub fn undeclared_arg_files(&self) -> impl Iterator<Item = &Utf8PathBuf> {
-    self.commands.iter().flat_map(Command::arg_files).filter(|path| {
+  pub fn undeclared_input_files(&self) -> impl Iterator<Item = &Utf8PathBuf> {
+    self.commands.iter().flat_map(Command::input_files).filter(|path| {
       let in_node_dir = path
         .components()
         .all(|component| matches!(component, Utf8Component::Normal(_) | Utf8Component::CurDir));

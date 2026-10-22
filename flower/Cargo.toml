@@ -14,3 +14,4 @@ merkle_hash.workspace = true
 camino.workspace = true
 clap.workspace = true
 thiserror.workspace = true
+regex.workspace = true

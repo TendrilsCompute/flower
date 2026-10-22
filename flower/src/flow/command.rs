@@ -5,6 +5,9 @@ use std::collections::BTreeMap;
 use thiserror::Error;
 use tokio::{fs, io, process};
 
+mod write;
+pub use write::{Extract, TextPart};
+
 pub type ExitStatus = i32;
 
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
@@ -18,28 +21,46 @@ pub enum Command {
     command: ExternalCommand,
     no_check: bool,
   },
+  /// Writes a file from the parts, concatenated.
+  /// A relative path is relative to the node's directory.
+  Write {
+    path: Utf8PathBuf,
+    parts: Vec<TextPart>,
+    no_check: bool,
+  },
 }
 impl Command {
   pub fn internal(name: impl Into<String>) -> Self {
     Self::Internal { name: name.into(), no_check: false }
   }
 
+  pub fn write(path: impl Into<Utf8PathBuf>, parts: Vec<TextPart>) -> Self {
+    Self::Write { path: path.into(), parts, no_check: false }
+  }
+
   pub fn no_check(&self) -> bool {
     match self {
-      Self::Internal { no_check, .. } | Self::External { no_check, .. } => *no_check,
+      Self::Internal { no_check, .. }
+      | Self::External { no_check, .. }
+      | Self::Write { no_check, .. } => *no_check,
     }
   }
 
-  /// The files this command reads its arguments from.
-  pub fn arg_files(&self) -> impl Iterator<Item = &Utf8PathBuf> {
-    let args = match self {
-      Self::External { command, .. } => command.args.as_slice(),
-      Self::Internal { .. } => &[],
-    };
-    args.iter().filter_map(|arg| match arg {
-      Arg::Lines(path) => Some(path),
-      Arg::Literal(_) => None,
-    })
+  /// The files this command reads, other than its executable:
+  /// the files its arguments are read from, or the files it writes from.
+  pub fn input_files(&self) -> Vec<&Utf8PathBuf> {
+    match self {
+      Self::Internal { .. } => vec![],
+      Self::External { command, .. } => command
+        .args
+        .iter()
+        .filter_map(|arg| match arg {
+          Arg::Lines(path) => Some(path),
+          Arg::Literal(_) => None,
+        })
+        .collect(),
+      Self::Write { parts, .. } => parts.iter().filter_map(TextPart::path).collect(),
+    }
   }
 
   pub async fn run(
@@ -50,6 +71,7 @@ impl Command {
     Ok(match self {
       Self::External { command, .. } => command.run(run_dir).await?,
       Self::Internal { name, .. } => builtins.get(name).ok_or(name)?(run_dir).await,
+      Self::Write { path, parts, .. } => write::run(run_dir, path, parts).await,
     })
   }
 }
@@ -88,6 +110,8 @@ pub struct ExternalCommand {
   pub env: BTreeMap<String, String>,
   pub exec: Utf8PathBuf,
   pub args: Vec<Arg>,
+  /// A file stdout is also written to. A relative path is relative to the node's directory.
+  pub stdout: Option<Utf8PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -150,6 +174,10 @@ impl ExternalCommand {
       .kill_on_drop(true)
       .output()
       .await?;
+    if let Some(path) = &self.stdout {
+      let path = run_dir.join(path);
+      fs::write(&path, &output.stdout).await.map_err(|err| CommandError::StdoutFile(path, err))?;
+    }
     Ok(CommandResult {
       stdout: output.stdout,
       stderr: output.stderr,
@@ -171,6 +199,8 @@ pub enum CommandError {
   External(#[from] io::Error),
   #[error("Failed to read arguments from {0}: {1}")]
   ArgFile(Utf8PathBuf, io::Error),
+  #[error("Failed to write stdout to {0}: {1}")]
+  StdoutFile(Utf8PathBuf, io::Error),
   #[error("Internal command '{0}' not found.")]
   InternalCommandNotFound(String),
 }

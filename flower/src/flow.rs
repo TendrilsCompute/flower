@@ -73,8 +73,8 @@ impl FlowRunner {
     if dep_names.contains(name) {
       return flow_err(FlowError::RequiringOwnPath(name.into()));
     }
-    if let Some(path) = node.undeclared_arg_files().next() {
-      return flow_err(FlowError::UndeclaredArgFile(name.into(), path.clone()));
+    if let Some(path) = node.undeclared_input_files().next() {
+      return flow_err(FlowError::UndeclaredInputFile(name.into(), path.clone()));
     }
     debug!("{name} depends on {dep_names:?}.");
 
@@ -124,8 +124,8 @@ pub enum FlowError {
   CircularDependency(String),
   #[error("Node '{0}' requires it's own path.")]
   RequiringOwnPath(String),
-  #[error("Node '{0}' reads arguments from {1}, which isn't in its directory or required paths.")]
-  UndeclaredArgFile(String, Utf8PathBuf),
+  #[error("Node '{0}' reads {1}, which isn't in its directory or required paths.")]
+  UndeclaredInputFile(String, Utf8PathBuf),
   #[error("Node '{0}' failure: {1}")]
   NodeError(String, Arc<NodeError>),
 }
