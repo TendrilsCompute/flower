@@ -7,7 +7,7 @@ use flower_construct::ConstructionResult;
 use crate::{
   project::Project,
   sv::SystemVerilogTop,
-  tool::{cocotb, slang::Slang, verilator::Verilator},
+  tool::{cocotb, slang::Slang, verilator::Verilator, yosys::Formal},
 };
 
 /// Each of `test_params` is run in a cocotb test of its own with `TEST_PARAMS` set to it;
@@ -44,7 +44,7 @@ pub fn system_verilog_flows(
     ("cocotb_config".to_string(), cocotb::config()?),
     (
       "verilator_cocotb_build".to_string(),
-      verilator.cocotb_build(flist_file, cocotb_args_file, [])?,
+      verilator.cocotb_build(&flist_file, cocotb_args_file, [])?,
     ),
   ]);
 
@@ -65,6 +65,31 @@ pub fn system_verilog_flows(
       }
       nodes.insert("cocotb_test".to_string(), collector);
     }
+  }
+
+  if let Some(config) = project.formal.get(top) {
+    let formal = Formal { design: &design, config };
+    let smt2_dir = dir.join("formal_smt2");
+
+    let mut smt2 = formal.smt2(&flist_file)?;
+    // Only check formally once the lints pass.
+    smt2.required_paths.push(dir.join("all_lints/run.msgpackz"));
+
+    nodes.extend([
+      ("formal_smt2".to_string(), smt2),
+      ("formal_bmc".to_string(), formal.check(&smt2_dir, false)?),
+      ("formal_induction".to_string(), formal.check(&smt2_dir, true)?),
+      (
+        "formal".to_string(),
+        Node {
+          required_paths: vec![
+            dir.join("formal_bmc/run.msgpackz"),
+            dir.join("formal_induction/run.msgpackz"),
+          ],
+          commands: vec![],
+        },
+      ),
+    ]);
   }
 
   Ok(FlowDescription { dir, nodes })
