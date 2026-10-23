@@ -3,9 +3,10 @@ use flower::flow::{
   command::{Arg, Command, ExternalCommand},
   node::Node,
 };
-use flower_construct::{ConstructionResult, flow::NodeRef, generate_path_list, get_executable};
+use flower_construct::{
+  ConstructionResult, env_vars, flow::NodeRef, generate_path_list, get_executable,
+};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 
 use crate::sv::SystemVerilogTop;
 
@@ -83,7 +84,7 @@ impl<'a> Formal<'a> {
       .collect();
 
     // yosys-smtbmc runs the solver, yices by default, from PATH.
-    let env = BTreeMap::from([("PATH".to_string(), generate_path_list(["yices-smt2"])?.into())]);
+    let env = env_vars([("PATH", generate_path_list(["yices-smt2"])?.into())]).collect();
     let check = ExternalCommand { exec: get_executable("yosys-smtbmc")?, args, env, stdout: None };
 
     Ok(Node { required_paths: vec![smt2], commands: vec![check.into()] })

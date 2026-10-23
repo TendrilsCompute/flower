@@ -1,12 +1,11 @@
-use std::collections::BTreeMap;
-
 use camino::Utf8PathBuf;
 use flower::flow::{
-  command::{Arg, EnvValue, ExternalCommand},
+  command::{Arg, Env, ExternalCommand},
   node::Node,
 };
 use flower_construct::{
-  ConstructionResult, flow::NodeRef, generate_path_list, get_executable, path::files_with_extension,
+  ConstructionResult, env_vars, flow::NodeRef, generate_path_list, get_executable,
+  path::files_with_extension,
 };
 use serde::{Deserialize, Serialize};
 
@@ -39,7 +38,7 @@ impl<'a> Verilator<'a> {
     &self,
     flist_path: impl Into<Utf8PathBuf>,
     additional_args: impl IntoIterator<Item = Arg>,
-    env: BTreeMap<String, EnvValue>,
+    env: Env,
   ) -> ConstructionResult<Node> {
     let flist_path = flist_path.into();
     let waiver_files: Vec<_> = self.verilator_waiver_files().collect();
@@ -65,11 +64,9 @@ impl<'a> Verilator<'a> {
     self.base_node(flist_path, [Arg::from("--lint-only")], Default::default())
   }
 
-  fn build_env() -> ConstructionResult<BTreeMap<String, EnvValue>> {
-    Ok(BTreeMap::from([(
-      "PATH".to_string(),
-      generate_path_list(["make", "g++", "uname", "sh", "python3", "xargs"])?.into(),
-    )]))
+  fn build_env() -> ConstructionResult<Env> {
+    let path = generate_path_list(["make", "g++", "uname", "sh", "python3", "xargs"])?;
+    Ok(env_vars([("PATH", path.into())]).collect())
   }
 
   pub fn build<'args>(

@@ -8,6 +8,7 @@ mod write;
 pub use write::{Extract, FromFile, MatchCount, TextPart};
 
 pub type ExitStatus = i32;
+pub type Env = BTreeMap<String, EnvValue>;
 
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub enum Command {
@@ -66,7 +67,7 @@ impl From<ExternalCommand> for Command {
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ExternalCommand {
-  pub env: BTreeMap<String, EnvValue>,
+  pub env: Env,
   pub exec: Utf8PathBuf,
   pub args: Vec<Arg>,
   /// A file stdout is also written to. A relative path is relative to the node's directory.
@@ -157,9 +158,9 @@ impl ExternalCommand {
     for arg in &self.args {
       args.extend(arg.resolve(run_dir).await?);
     }
-    let mut env = BTreeMap::new();
+    let mut env = Vec::new();
     for (name, value) in &self.env {
-      env.insert(name, value.resolve(run_dir).await?);
+      env.push((name, value.resolve(run_dir).await?));
     }
     let output = process::Command::new(&self.exec)
       .env_clear()

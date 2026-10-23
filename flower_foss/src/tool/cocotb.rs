@@ -1,12 +1,12 @@
-use std::{collections::BTreeMap, env};
+use std::env;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use flower::flow::{
-  command::{Arg, Command, EnvValue, ExternalCommand, Extract, FromFile, MatchCount},
+  command::{Arg, Command, Env, EnvValue, ExternalCommand, Extract, FromFile, MatchCount},
   node::Node,
 };
 use flower_construct::{
-  ConstructionResult, flow::NodeRef, get_executable, path::files_with_extension,
+  ConstructionResult, env_vars, flow::NodeRef, get_executable, path::files_with_extension,
 };
 use serde::{Deserialize, Serialize};
 
@@ -100,20 +100,23 @@ pub fn test(
   let libpython = config.file(LIBPYTHON_FILE);
   let python_bin = config.file(PYTHON_BIN_FILE);
 
-  let mut env = BTreeMap::from([
-    ("COCOTB_TOPLEVEL".to_string(), top.into()),
-    ("TOPLEVEL_LANG".to_string(), "verilog".into()),
-    ("COCOTB_TEST_MODULES".to_string(), module_names.join(",").into()),
-    ("COCOTB_RESULTS_FILE".to_string(), "results.xml".into()),
-    ("PYTHONPATH".to_string(), python_path.join(":").into()),
+  let mut env: Env = env_vars([
+    ("COCOTB_TOPLEVEL", top.into()),
+    ("TOPLEVEL_LANG", "verilog".into()),
+    ("COCOTB_TEST_MODULES", module_names.join(",").into()),
+    ("COCOTB_RESULTS_FILE", "results.xml".into()),
+    ("PYTHONPATH", python_path.join(":").into()),
     // Keeps Python's bytecode out of the source tree, which may be a required path.
-    ("PYTHONPYCACHEPREFIX".to_string(), "pycache".into()),
-  ]);
-  env.extend(test_params.map(|path| ("TEST_PARAMS".to_string(), path.as_str().into())));
+    ("PYTHONPYCACHEPREFIX", "pycache".into()),
+  ])
+  .collect();
+  env.extend(env_vars(test_params.map(|path| ("TEST_PARAMS", path.as_str().into()))));
 
   let mut sim_env = env.clone();
-  sim_env.insert("LIBPYTHON_LOC".to_string(), EnvValue::File(libpython.clone()));
-  sim_env.insert("PYGPI_PYTHON_BIN".to_string(), EnvValue::File(python_bin.clone()));
+  sim_env.extend(env_vars([
+    ("LIBPYTHON_LOC", EnvValue::File(libpython.clone())),
+    ("PYGPI_PYTHON_BIN", EnvValue::File(python_bin.clone())),
+  ]));
   let run = ExternalCommand { exec: sim.into(), env: sim_env, ..Default::default() };
   // The simulator succeeds even if tests fail.
   let check = ExternalCommand {

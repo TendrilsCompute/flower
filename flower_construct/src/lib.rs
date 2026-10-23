@@ -4,6 +4,7 @@ pub mod path;
 use std::{collections::BTreeSet, path::PathBuf};
 
 use camino::Utf8PathBuf;
+use flower::flow::command::EnvValue;
 use thiserror::Error;
 use tokio::io;
 use which::{Error as WhichError, which};
@@ -24,6 +25,12 @@ pub fn generate_path_list<'a>(
     paths.insert(path.into_string());
   }
   Ok(paths.into_iter().collect::<Vec<_>>().join(":"))
+}
+
+pub fn env_vars<'a>(
+  vars: impl IntoIterator<Item = (&'a str, EnvValue)>,
+) -> impl Iterator<Item = (String, EnvValue)> {
+  vars.into_iter().map(|(name, value)| (name.to_string(), value))
 }
 
 #[derive(Debug, Error)]
