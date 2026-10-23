@@ -140,6 +140,11 @@ pub struct NodeRunInfo {
 }
 
 impl NodeRunInfo {
+  /// Written when the node finishes, so requiring it orders after the node.
+  pub fn manifest_path(node_dir: &Utf8Path) -> Utf8PathBuf {
+    <Self as NodeManifest>::manifest_path(node_dir)
+  }
+
   pub async fn hashes_match<'a>(
     &self,
     paths: impl Iterator<Item = &'a Utf8PathBuf>,

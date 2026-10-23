@@ -5,7 +5,9 @@ use flower::flow::{
   command::{Arg, Command, EnvValue, ExternalCommand, Extract, FromFile, MatchCount},
   node::Node,
 };
-use flower_construct::{ConstructionResult, get_executable, path::files_with_extension};
+use flower_construct::{
+  ConstructionResult, flow::NodeRef, get_executable, path::files_with_extension,
+};
 use serde::{Deserialize, Serialize};
 
 /// The file in the node's directory holding the arguments that build a cocotb verilator simulator.
@@ -78,12 +80,12 @@ pub fn config() -> ConstructionResult<Node> {
 
 /// Runs a cocotb simulator, writing the results to `results.xml`,
 /// and fails if any test failed.
-/// `config_dir` is the directory of the [`config`] node.
+/// `config` is the [`config`] node.
 ///
 /// Python packages are found through the `PYTHONPATH` this is constructed with.
 pub fn test(
   sim: &Utf8Path,
-  config_dir: &Utf8Path,
+  config: &NodeRef,
   top: &str,
   tests: &CocotbTests,
   test_params: Option<&Utf8Path>,
@@ -95,8 +97,8 @@ pub fn test(
   python_path.dedup();
   python_path.extend(env::var("PYTHONPATH").ok());
 
-  let libpython = config_dir.join(LIBPYTHON_FILE);
-  let python_bin = config_dir.join(PYTHON_BIN_FILE);
+  let libpython = config.file(LIBPYTHON_FILE);
+  let python_bin = config.file(PYTHON_BIN_FILE);
 
   let mut env = BTreeMap::from([
     ("COCOTB_TOPLEVEL".to_string(), top.into()),

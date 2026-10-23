@@ -1,3 +1,4 @@
+pub mod flow;
 pub mod path;
 
 use std::{collections::BTreeSet, path::PathBuf};
@@ -35,6 +36,8 @@ pub enum ConstructionError {
   NonUtf8Path(PathBuf),
   #[error("Failed to find executable '{0}': {1}")]
   ExecutableFindError(String, WhichError),
+  #[error("Node '{0}' added more than once")]
+  DuplicateNode(String),
   #[error("Invalid regex: {0}")]
   InvalidRegex(#[from] regex::Error),
 }

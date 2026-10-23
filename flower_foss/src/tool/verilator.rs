@@ -6,11 +6,21 @@ use flower::flow::{
   node::Node,
 };
 use flower_construct::{
-  ConstructionResult, generate_path_list, get_executable, path::files_with_extension,
+  ConstructionResult, flow::NodeRef, generate_path_list, get_executable, path::files_with_extension,
 };
 use serde::{Deserialize, Serialize};
 
-use crate::sv::SystemVerilogTop;
+use crate::{sv::SystemVerilogTop, tool::cocotb};
+
+/// The `--prefix` of the simulator [`Verilator::cocotb_build`] builds, which names its executable.
+const COCOTB_SIM_PREFIX: &str = "Vtop";
+/// Verilator's default output directory.
+const OBJ_DIR: &str = "obj_dir";
+
+/// The simulator built by the [`Verilator::cocotb_build`] node `build`.
+pub fn cocotb_sim(build: &NodeRef) -> Utf8PathBuf {
+  build.file(OBJ_DIR).join(COCOTB_SIM_PREFIX)
+}
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct VerilatorConfig;
@@ -71,20 +81,21 @@ impl<'a> Verilator<'a> {
     self.base_node(flist_path, args, Self::build_env()?)
   }
 
-  /// Builds a simulator for cocotb to drive through VPI.
-  /// `cocotb_args_file` holds the arguments that link in cocotb, one per line.
+  /// Builds the [`cocotb_sim`] for cocotb to drive through VPI,
+  /// linking in cocotb as configured by the [`cocotb::config`] node.
   pub fn cocotb_build<'args>(
     &self,
     flist_path: impl Into<Utf8PathBuf>,
-    cocotb_args_file: impl Into<Utf8PathBuf>,
+    cocotb_config: &NodeRef,
     additional_args: impl IntoIterator<Item = &'args str>,
   ) -> ConstructionResult<Node> {
-    let cocotb_args_file = cocotb_args_file.into();
-    let args = ["--cc", "--exe", "--build", "--vpi", "--public-flat-rw", "--prefix", "Vtop"]
-      .into_iter()
-      .chain(additional_args)
-      .map(Arg::from)
-      .chain([Arg::Lines(cocotb_args_file.clone())]);
+    let cocotb_args_file = cocotb_config.file(cocotb::VERILATOR_ARGS_FILE);
+    let args =
+      ["--cc", "--exe", "--build", "--vpi", "--public-flat-rw", "--prefix", COCOTB_SIM_PREFIX]
+        .into_iter()
+        .chain(additional_args)
+        .map(Arg::from)
+        .chain([Arg::Lines(cocotb_args_file.clone())]);
 
     let mut node = self.base_node(flist_path, args, Self::build_env()?)?;
     node.required_paths.push(cocotb_args_file);

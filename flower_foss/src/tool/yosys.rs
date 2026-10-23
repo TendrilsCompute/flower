@@ -1,9 +1,9 @@
-use camino::{Utf8Path, Utf8PathBuf};
+use camino::Utf8PathBuf;
 use flower::flow::{
   command::{Arg, Command, ExternalCommand},
   node::Node,
 };
-use flower_construct::{ConstructionResult, generate_path_list, get_executable};
+use flower_construct::{ConstructionResult, flow::NodeRef, generate_path_list, get_executable};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -65,11 +65,11 @@ impl<'a> Formal<'a> {
     Ok(Node { required_paths, commands })
   }
 
-  /// Checks the SMT2 model written by [`Self::smt2`] in `smt2_dir`,
+  /// Checks the SMT2 model written by the [`Self::smt2`] node,
   /// with bounded model checking or, if `induction`, k-induction.
-  pub fn check(&self, smt2_dir: &Utf8Path, induction: bool) -> ConstructionResult<Node> {
+  pub fn check(&self, smt2: &NodeRef, induction: bool) -> ConstructionResult<Node> {
     let top = self.design.top;
-    let smt2 = smt2_dir.join(self.smt2_file());
+    let smt2 = smt2.file(self.smt2_file());
     let steps = self.config.steps.to_string();
 
     let dumps =

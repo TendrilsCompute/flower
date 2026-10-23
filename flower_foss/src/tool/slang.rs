@@ -7,6 +7,9 @@ use flower_construct::{ConstructionResult, get_executable};
 
 use crate::sv::SystemVerilogTop;
 
+/// The file list [`Slang::flist`] writes in its node's directory.
+pub const FLIST_FILE: &str = "top.f";
+
 pub struct Slang<'a> {
   pub design: &'a SystemVerilogTop<'a>,
 }
@@ -42,7 +45,7 @@ impl<'a> Slang<'a> {
     Ok(ExternalCommand { exec: get_executable("slang")?, args, ..Default::default() }.into())
   }
 
-  /// Writes `top.f`, the files the top depends on, from slang's depfiles.
+  /// Writes [`FLIST_FILE`], the files the top depends on, from slang's depfiles.
   pub fn flist(&self) -> ConstructionResult<Node> {
     // An include directory for each header used.
     let include_dirs =
@@ -50,7 +53,7 @@ impl<'a> Slang<'a> {
         .count(MatchCount::ZeroOrMore)
         .distinct();
     let top_f = vec![include_dirs.into(), FromFile::contents("modules.f").into(), "\n".into()];
-    let commands = vec![self.depfiles()?, Command::write("top.f", top_f)];
+    let commands = vec![self.depfiles()?, Command::write(FLIST_FILE, top_f)];
     Ok(Node { required_paths: self.design.required_paths(), commands })
   }
 
