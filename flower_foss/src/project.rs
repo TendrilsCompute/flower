@@ -1,4 +1,5 @@
 use camino::Utf8Path;
+use flower_construct::{ConstructionResult, path::canonicalize_on};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -18,13 +19,16 @@ pub struct Project {
   pub formal: BTreeMap<String, FormalConfig>,
 }
 impl Project {
-  pub fn with_paths_canonicalized_on(mut self, project_dir: &Utf8Path) -> Self {
+  pub async fn with_paths_canonicalized_on(
+    mut self,
+    project_dir: &Utf8Path,
+  ) -> ConstructionResult<Self> {
     let sv_paths = self.sv_lib.values_mut().flat_map(SystemVerilogLibrary::paths_mut);
     let cocotb_paths = self.cocotb.values_mut().flat_map(|tests| tests.test_modules.iter_mut());
     let formal_paths = self.formal.values_mut().flat_map(|formal| formal.props.iter_mut());
     for path in sv_paths.chain(cocotb_paths).chain(formal_paths) {
-      *path = project_dir.join(&path);
+      *path = canonicalize_on(path, project_dir).await?;
     }
-    self
+    Ok(self)
   }
 }

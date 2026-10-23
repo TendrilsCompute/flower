@@ -33,7 +33,7 @@ impl Command {
   }
 
   /// The files this command reads, other than its executable:
-  /// the files its arguments are read from, or the files it writes from.
+  /// the files its arguments and environment are read from, or the files it writes from.
   pub fn input_files(&self) -> Vec<&Utf8PathBuf> {
     match self {
       Self::External { command, .. } => {
@@ -48,6 +48,22 @@ impl Command {
         arg_files.chain(env_files).collect()
       }
       Self::Write { parts, .. } => parts.iter().filter_map(TextPart::path).collect(),
+    }
+  }
+
+  /// The files this command writes, other than through what it runs.
+  pub fn output_files(&self) -> Vec<&Utf8PathBuf> {
+    match self {
+      Self::External { command, .. } => command.stdout.iter().collect(),
+      Self::Write { path, .. } => vec![path],
+    }
+  }
+
+  /// The executable an external command runs.
+  pub fn exec(&self) -> Option<&Utf8PathBuf> {
+    match self {
+      Self::External { command, .. } => Some(&command.exec),
+      Self::Write { .. } => None,
     }
   }
 
@@ -68,6 +84,7 @@ impl From<ExternalCommand> for Command {
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ExternalCommand {
   pub env: Env,
+  /// A relative path is relative to the node's directory.
   pub exec: Utf8PathBuf,
   pub args: Vec<Arg>,
   /// A file stdout is also written to. A relative path is relative to the node's directory.
@@ -162,7 +179,8 @@ impl ExternalCommand {
     for (name, value) in &self.env {
       env.push((name, value.resolve(run_dir).await?));
     }
-    let output = process::Command::new(&self.exec)
+    // How a relative program is found with `current_dir` differs between platforms.
+    let output = process::Command::new(run_dir.join(&self.exec))
       .env_clear()
       .envs(env)
       .args(args)

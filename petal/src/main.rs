@@ -62,7 +62,7 @@ async fn main() -> PetalResult<()> {
 
     path.pop();
     let path = canonicalize_on(&path, &current_dir).await?;
-    toml::from_str::<Project>(&project_source)?.with_paths_canonicalized_on(&path)
+    toml::from_str::<Project>(&project_source)?.with_paths_canonicalized_on(&path).await?
   };
 
   let mut canonical_test_params = Vec::new();
@@ -72,7 +72,7 @@ async fn main() -> PetalResult<()> {
 
   let flow = system_verilog_flows(dir, &top_level, &project, &canonical_test_params)?;
 
-  FlowRunner::from(flow).spawn_node(&node, force_rerun).await?;
+  FlowRunner::run(flow, &node, force_rerun).await?;
 
   Ok(())
 }

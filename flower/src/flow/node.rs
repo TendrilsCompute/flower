@@ -1,16 +1,15 @@
-use camino::{Utf8Component, Utf8Path, Utf8PathBuf};
+use camino::{Utf8Path, Utf8PathBuf};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::fs;
-use tokio::io;
 use tokio::sync::Mutex;
-use tracing::{debug, info};
+use tracing::debug;
 
 use super::command::CommandError;
 use super::command::{Command, CommandResult, ExitStatus};
-use crate::clean_dir;
+use super::path::{InvalidPath, NodePath};
 use crate::util::{
   hash::{HashingError, PathHash, PathHasher},
   serialization::{self, SerializationError},
@@ -25,38 +24,88 @@ pub struct Node {
 }
 
 impl Node {
-  /// Files commands read must be inside the node's directory
-  /// (a relative path without `..`) or be covered by a required path,
-  /// otherwise changes to them wouldn't cause a rerun.
-  pub fn undeclared_input_files(&self) -> impl Iterator<Item = &Utf8PathBuf> {
-    self.commands.iter().flat_map(Command::input_files).filter(|path| {
-      let in_node_dir = path
-        .components()
-        .all(|component| matches!(component, Utf8Component::Normal(_) | Utf8Component::CurDir));
-      !in_node_dir && !self.required_paths.iter().any(|required| path.starts_with(required))
-    })
+  /// The nodes this node depends on, i.e. those its required paths are in.
+  /// It's an error for a required path to be in the node's own directory.
+  pub fn deps(&self) -> NodeResult<BTreeSet<String>> {
+    self
+      .required_paths
+      .iter()
+      .filter_map(|path| {
+        Some(match NodePath::parse(path) {
+          Ok(NodePath::External(_)) => return None,
+          Ok(NodePath::OtherNode { node, .. }) => Ok(node.to_string()),
+          Ok(NodePath::Local(_)) => Err(NodeError::RequiringOwnPath),
+          Err(err) => Err(NodeError::InvalidPath(err)),
+        })
+      })
+      .collect()
   }
 
+  /// Checks the node's paths are valid and that it declares what it uses from outside its
+  /// directory, for a flow in `flow_dir`. Invalid required paths are reported by [`Self::deps`].
+  pub fn check_paths(&self, flow_dir: &Utf8Path) -> NodeResult<()> {
+    let inputs = self.commands.iter().flat_map(Command::input_files);
+    let execs = self.commands.iter().filter_map(Command::exec);
+    for input_path in inputs.clone() {
+      if let NodePath::Local(_) = NodePath::parse(input_path)? {
+        continue;
+      }
+      if !self.is_required(input_path) {
+        // Non local inputs should be in the required paths.
+        return Err(NodeError::UndeclaredInputFile(input_path.clone()));
+      }
+    }
+    for output_path in self.commands.iter().flat_map(Command::output_files) {
+      // All output paths should be local.
+      if let NodePath::Local(_) = NodePath::parse(output_path)? {
+        continue;
+      }
+      return Err(NodeError::NonLocalOutputFile(output_path.clone()));
+    }
+    for exec_path in execs.clone() {
+      // Executables from other nodes should be in the required paths.
+      if let NodePath::OtherNode { .. } = NodePath::parse(exec_path)?
+        && !self.is_required(exec_path)
+      {
+        return Err(NodeError::UndeclaredExecutable(exec_path.to_owned()));
+      }
+    }
+    for path in self.required_paths.iter().chain(inputs).chain(execs) {
+      if let Ok(NodePath::External(path)) = NodePath::parse(path)
+        && path.starts_with(flow_dir)
+      {
+        return Err(NodeError::ExternalPathIntoFlow(path.to_owned()));
+      }
+    }
+    Ok(())
+  }
+
+  /// Whether `path` is covered by a required path.
+  fn is_required(&self, path: &Utf8Path) -> bool {
+    self.required_paths.iter().any(|required| path.starts_with(required))
+  }
+
+  /// Whether the node needs to run in `node_dir`, rather than reuse its `previous` run.
+  /// `node_dir` may not exist yet, but its siblings must be this run's dependencies.
   pub async fn rerun_required(
     &self,
+    previous: &Utf8Path,
     node_dir: &Utf8Path,
     hasher: &mut PathHasher,
   ) -> NodeResult<bool> {
     let name = || node_dir.file_name().unwrap();
 
-    let required_paths = self.required_paths.iter();
-
-    if !Self::manifest_exists(node_dir).await? || !NodeRunInfo::manifest_exists(node_dir).await? {
+    if !Self::manifest_exists(previous).await? || !NodeRunInfo::manifest_exists(previous).await? {
       debug!("{} requires rerun due to missing manifest(s).", name());
       return Ok(true);
     }
 
-    if Self::read(node_dir).await? != *self {
+    if Self::read(previous).await? != *self {
       debug!("{} requires rerun due to changed info manifest.", name());
       return Ok(true);
     }
 
-    let info = NodeRunInfo::read(node_dir).await?;
+    let info = NodeRunInfo::read(previous).await?;
 
     if self
       .commands
@@ -68,33 +117,15 @@ impl Node {
       return Ok(true);
     }
 
-    let hashes_match = info.hashes_match(required_paths, hasher).await?;
-    Ok(!hashes_match)
+    let hashes = self.required_path_hashes(node_dir, hasher).await?;
+    Ok(hashes != info.required_path_hashes)
   }
 
-  pub async fn run(
-    &self,
-    node_dir: &Utf8Path,
-    hasher: Arc<Mutex<PathHasher>>,
-    force_rerun: bool,
-  ) -> NodeResult<()> {
-    let name = || node_dir.file_name().unwrap();
-
-    {
-      let mut hasher = hasher.lock().await;
-      if !force_rerun && !self.rerun_required(node_dir, &mut hasher).await? {
-        info!("Skipping {}.", name());
-        return Ok(());
-      }
-      // We may change these paths, so we should clear the cache.
-      hasher.remove(node_dir);
-    }
-
-    info!("Running {}.", name());
-
+  /// Runs the commands in `node_dir`, an existing empty directory
+  /// whose siblings are the directories of the node's dependencies.
+  pub async fn run(&self, node_dir: &Utf8Path, hasher: Arc<Mutex<PathHasher>>) -> NodeResult<()> {
     let mut info = NodeRunInfo::default();
 
-    clean_dir(node_dir).await.map_err(NodeError::CreateNodeDir)?;
     self.write(node_dir).await?;
 
     for command in &self.commands {
@@ -104,7 +135,7 @@ impl Node {
       info.results.push(exec_result);
 
       if !command.no_check() && status != 0 {
-        if let Ok(hashes) = self.required_path_hashes(hasher).await {
+        if let Ok(hashes) = self.required_path_hashes(node_dir, &mut *hasher.lock().await).await {
           info.required_path_hashes = hashes;
         }
         info.write(node_dir).await?;
@@ -113,21 +144,23 @@ impl Node {
       }
     }
 
-    info.required_path_hashes = self.required_path_hashes(hasher).await?;
+    info.required_path_hashes =
+      self.required_path_hashes(node_dir, &mut *hasher.lock().await).await?;
 
     info.write(node_dir).await?;
     Ok(())
   }
 
+  /// Keyed by the paths as the node defines them, but hashed where they are for `node_dir`.
   async fn required_path_hashes(
     &self,
-    hasher: Arc<Mutex<PathHasher>>,
+    node_dir: &Utf8Path,
+    hasher: &mut PathHasher,
   ) -> NodeResult<BTreeMap<Utf8PathBuf, PathHash>> {
-    let mut hasher = hasher.lock().await;
-    let mut hashes = BTreeMap::<Utf8PathBuf, PathHash>::new();
+    let mut hashes = BTreeMap::new();
     for path in &self.required_paths {
-      let hash = hasher.hash(path).await?;
-      hashes.insert(path.into(), hash);
+      let hash = hasher.hash(&NodePath::parse(path)?.resolve(node_dir)).await?;
+      hashes.insert(path.clone(), hash);
     }
     Ok(hashes)
   }
@@ -143,21 +176,6 @@ impl NodeRunInfo {
   /// Written when the node finishes, so requiring it orders after the node.
   pub fn manifest_path(node_dir: &Utf8Path) -> Utf8PathBuf {
     <Self as NodeManifest>::manifest_path(node_dir)
-  }
-
-  pub async fn hashes_match<'a>(
-    &self,
-    paths: impl Iterator<Item = &'a Utf8PathBuf>,
-    hasher: &mut PathHasher,
-  ) -> Result<bool, HashingError> {
-    for path in paths {
-      let Some(previous_hash) = self.required_path_hashes.get(path) else { return Ok(false) };
-      let hash = hasher.hash(path).await?;
-      if hash != *previous_hash {
-        return Ok(false);
-      }
-    }
-    Ok(true)
   }
 }
 
@@ -199,8 +217,18 @@ pub enum NodeError {
   Serialization(#[from] SerializationError),
   #[error("Hashing error: {0}")]
   Hashing(#[from] HashingError),
-  #[error("Failed to create node directory: {0}")]
-  CreateNodeDir(io::Error),
+  #[error("Node requires its own path.")]
+  RequiringOwnPath,
+  #[error("Node has an undeclared input file {0}.")]
+  UndeclaredInputFile(Utf8PathBuf),
+  #[error("Node runs {0}, which isn't covered by its required paths.")]
+  UndeclaredExecutable(Utf8PathBuf),
+  #[error("Node uses {0}, which is inside the flow directory.")]
+  ExternalPathIntoFlow(Utf8PathBuf),
+  #[error("Node writes to a non-local file {0}.")]
+  NonLocalOutputFile(Utf8PathBuf),
+  #[error(transparent)]
+  InvalidPath(#[from] InvalidPath),
   #[error("Failed to run command: {0}")]
   Execute(#[from] CommandError),
   #[error("Executable terminated with status {status} (see {run_info})")]

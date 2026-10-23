@@ -37,7 +37,8 @@ impl FlowBuilder {
 
   pub fn add(&mut self, name: impl Into<String>, node: Node) -> ConstructionResult<NodeRef> {
     let name = name.into();
-    let dir = self.flow.node_dir(&name);
+    // Other nodes are reached from a node's directory through its parent.
+    let dir = Utf8Path::new("..").join(&name);
     match self.flow.nodes.entry(name) {
       Entry::Occupied(entry) => Err(ConstructionError::DuplicateNode(entry.key().clone())),
       Entry::Vacant(entry) => {
