@@ -67,7 +67,7 @@ fn cocotb_flows(
     // A test for each parameter file, collected by `cocotb_test`.
     let mut runs = Vec::new();
     for test_params in &test_param_files {
-      let name = format!("cocotb_test.{}", test_params.file_stem().unwrap_or_default());
+      let name = format!("cocotb_test-{}", test_params.file_stem().unwrap_or_default());
       runs.push(flow.add(name, test(Some(test_params))?)?);
     }
     flow.collect("cocotb_test", &runs)?;

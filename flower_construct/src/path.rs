@@ -1,16 +1,16 @@
 use std::env;
 
 use camino::{Utf8Path, Utf8PathBuf};
+use flower::util::path::{canonicalize as flower_canonicalize, utf8};
 use tokio::fs;
 use walkdir::WalkDir;
 
 use crate::{ConstructionError, ConstructionResult};
 
 pub async fn canonicalize(path: &Utf8Path) -> ConstructionResult<Utf8PathBuf> {
-  let canonicalized = fs::canonicalize(path)
+  flower_canonicalize(path)
     .await
-    .map_err(|e| ConstructionError::Canonicalization(Utf8PathBuf::from(path), e))?;
-  Ok(Utf8PathBuf::from_path_buf(canonicalized)?)
+    .map_err(|e| ConstructionError::Canonicalization(path.to_owned(), e))
 }
 
 pub async fn canonicalize_on(path: &Utf8Path, root: &Utf8Path) -> ConstructionResult<Utf8PathBuf> {
@@ -19,9 +19,7 @@ pub async fn canonicalize_on(path: &Utf8Path, root: &Utf8Path) -> ConstructionRe
 }
 
 pub fn current_dir() -> ConstructionResult<Utf8PathBuf> {
-  let dir =
-    env::current_dir().map_err(|e| ConstructionError::IoError(Utf8PathBuf::from("."), e))?;
-  Ok(Utf8PathBuf::from_path_buf(dir)?)
+  env::current_dir().and_then(utf8).map_err(|e| ConstructionError::IoError(".".into(), e))
 }
 
 pub async fn find_file_in_parents(

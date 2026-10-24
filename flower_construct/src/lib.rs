@@ -1,10 +1,10 @@
 pub mod flow;
 pub mod path;
 
-use std::{collections::BTreeSet, path::PathBuf};
+use std::collections::BTreeSet;
 
 use camino::Utf8PathBuf;
-use flower::flow::command::EnvValue;
+use flower::{flow::command::EnvValue, util::path::utf8};
 use thiserror::Error;
 use tokio::io;
 use which::{Error as WhichError, which};
@@ -12,7 +12,7 @@ use which::{Error as WhichError, which};
 pub fn get_executable(name: &str) -> ConstructionResult<Utf8PathBuf> {
   use ConstructionError::*;
   let path = which(name).map_err(|e| ExecutableFindError(name.to_string(), e))?;
-  Utf8PathBuf::from_path_buf(path).map_err(NonUtf8Path)
+  utf8(path).map_err(|e| IoError(name.into(), e))
 }
 
 pub fn generate_path_list<'a>(
@@ -39,8 +39,6 @@ pub enum ConstructionError {
   Canonicalization(Utf8PathBuf, io::Error),
   #[error("Io error involving {0}: {1}")]
   IoError(Utf8PathBuf, io::Error),
-  #[error("Non utf8 path '{0}'")]
-  NonUtf8Path(PathBuf),
   #[error("Failed to find executable '{0}': {1}")]
   ExecutableFindError(String, WhichError),
   #[error("Node '{0}' added more than once")]
@@ -49,9 +47,3 @@ pub enum ConstructionError {
   InvalidRegex(#[from] regex::Error),
 }
 pub type ConstructionResult<T> = Result<T, ConstructionError>;
-
-impl From<PathBuf> for ConstructionError {
-  fn from(path: PathBuf) -> Self {
-    Self::NonUtf8Path(path)
-  }
-}
