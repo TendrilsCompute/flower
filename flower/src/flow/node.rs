@@ -1,7 +1,6 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::Arc;
 use thiserror::Error;
 use tokio::fs;
 use tokio::sync::Mutex;
@@ -123,7 +122,7 @@ impl Node {
 
   /// Runs the commands in `node_dir`, an existing empty directory
   /// whose siblings are the directories of the node's dependencies.
-  pub async fn run(&self, node_dir: &Utf8Path, hasher: Arc<Mutex<PathHasher>>) -> NodeResult<()> {
+  pub async fn run(&self, node_dir: &Utf8Path, hasher: &Mutex<PathHasher>) -> NodeResult<()> {
     let mut info = NodeRunInfo::default();
 
     self.write(node_dir).await?;

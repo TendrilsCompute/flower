@@ -27,14 +27,11 @@ impl NodeRef {
 
 /// Builds a [`FlowDescription`], handing out a [`NodeRef`] for each node added.
 /// As nodes are referred to through these, they're added after their dependencies.
+#[derive(Default)]
 pub struct FlowBuilder {
   flow: FlowDescription,
 }
 impl FlowBuilder {
-  pub fn new(dir: impl Into<Utf8PathBuf>) -> Self {
-    Self { flow: FlowDescription { dir: dir.into(), ..Default::default() } }
-  }
-
   pub fn add(&mut self, name: impl Into<String>, node: Node) -> ConstructionResult<NodeRef> {
     let name = name.into();
     // Other nodes are reached from a node's directory through its parent.

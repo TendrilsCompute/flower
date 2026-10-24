@@ -70,9 +70,9 @@ async fn main() -> PetalResult<()> {
     canonical_test_params.push(canonicalize_on(path, &current_dir).await?);
   }
 
-  let flow = system_verilog_flows(dir, &top_level, &project, &canonical_test_params)?;
+  let flow = system_verilog_flows(&top_level, &project, &canonical_test_params)?;
 
-  FlowRunner::run(flow, &node, force_rerun).await?;
+  FlowRunner::run(flow, dir, &node, force_rerun).await?;
 
   Ok(())
 }

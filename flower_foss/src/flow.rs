@@ -19,7 +19,6 @@ use crate::{
 /// Each of `test_params` is run in a cocotb test of its own with `TEST_PARAMS` set to it;
 /// a directory stands for the `.json` files in it.
 pub fn system_verilog_flows(
-  dir: impl Into<Utf8PathBuf>,
   top: &str,
   project: &Project,
   test_params: &[Utf8PathBuf],
@@ -27,7 +26,7 @@ pub fn system_verilog_flows(
   let design = SystemVerilogTop { top, libs: project.sv_lib.values().collect() };
   let slang = Slang::from(&design);
   let verilator = Verilator { design: &design, config: Default::default() };
-  let mut flow = FlowBuilder::new(dir);
+  let mut flow = FlowBuilder::default();
 
   let flist = flow.add("flist", slang.flist()?)?;
   let flist_file = flist.file(slang::FLIST_FILE);
