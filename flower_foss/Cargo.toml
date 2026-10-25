@@ -2,6 +2,7 @@
 name = "flower_foss"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [dependencies]
 flower = { path = "../flower" }

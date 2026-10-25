@@ -16,6 +16,7 @@
           version = "0.0.1";
           src = ./.;
           cargoLock.lockFile = ./Cargo.lock;
+          meta.license = pkgs.lib.licenses.asl20;
         };
         default = flower;
       });
