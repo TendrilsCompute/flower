@@ -1,3 +1,5 @@
+use std::process::ExitCode;
+
 use camino::{Utf8Path, Utf8PathBuf};
 use clap::{Args, Parser, Subcommand};
 use flower::flow::{FlowDescription, FlowError, FlowRunner, RunConfig};
@@ -61,11 +63,21 @@ struct FlowArgs {
 }
 
 #[tokio::main(flavor = "local")]
-async fn main() -> PetalResult<()> {
+async fn main() -> ExitCode {
   tracing_subscriber::fmt::init();
 
+  match run(Cli::parse().command).await {
+    Ok(()) => ExitCode::SUCCESS,
+    Err(err) => {
+      eprintln!("{err}");
+      ExitCode::FAILURE
+    }
+  }
+}
+
+async fn run(command: Command) -> PetalResult<()> {
   let current_dir = current_dir()?;
-  match Cli::parse().command {
+  match command {
     Command::Run { flow, node, dir, config } => {
       let flow = build_flow(flow, &current_dir).await?;
       FlowRunner::run(flow, &dir, &node, config).await?;
@@ -107,8 +119,6 @@ async fn build_flow(args: FlowArgs, current_dir: &Utf8Path) -> PetalResult<FlowD
 pub type PetalResult<T> = Result<T, PetalError>;
 #[derive(Error, Debug)]
 pub enum PetalError {
-  #[error("Canonicalization of {0} failed: {1}")]
-  Canonicalization(Utf8PathBuf, io::Error),
   #[error("Io error involving {0}: {1}")]
   IoError(Utf8PathBuf, io::Error),
   #[error("Flow construction error: {0}")]

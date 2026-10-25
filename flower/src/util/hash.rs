@@ -28,10 +28,6 @@ impl PathHasher {
     }
     Ok(hash)
   }
-
-  pub fn remove(&mut self, path: &Utf8Path) {
-    self.cache.retain(|cache_path, _| !cache_path.starts_with(path))
-  }
 }
 
 #[derive(Debug, Error)]

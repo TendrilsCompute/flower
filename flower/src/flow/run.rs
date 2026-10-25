@@ -34,7 +34,7 @@ pub struct RunConfig {
   pub no_history: bool,
   /// Use dependencies' outputs in the run directory as they are, rather than running them.
   /// Throws an error if they're not present.
-  #[arg(long)]
+  #[arg(long, requires = "no_history")]
   pub no_deps: bool,
 }
 

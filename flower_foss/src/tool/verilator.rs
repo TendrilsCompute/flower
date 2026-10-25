@@ -7,7 +7,6 @@ use flower_construct::{
   ConstructionResult, env_vars, flow::NodeRef, generate_path_list, get_executable,
   path::files_with_extension,
 };
-use serde::{Deserialize, Serialize};
 
 use crate::{sv::SystemVerilogTop, tool::cocotb};
 
@@ -21,12 +20,8 @@ pub fn cocotb_sim(build: &NodeRef) -> Utf8PathBuf {
   build.file(OBJ_DIR).join(COCOTB_SIM_PREFIX)
 }
 
-#[derive(Default, Debug, Serialize, Deserialize)]
-pub struct VerilatorConfig;
-
 pub struct Verilator<'a> {
   pub design: &'a SystemVerilogTop<'a>,
-  pub config: VerilatorConfig,
 }
 
 impl<'a> Verilator<'a> {

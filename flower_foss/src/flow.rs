@@ -30,7 +30,7 @@ pub fn system_verilog_flows(
     params: config.map(|config| &config.params),
   };
   let slang = Slang::from(&design);
-  let verilator = Verilator { design: &design, config: Default::default() };
+  let verilator = Verilator { design: &design };
   let mut flow = FlowBuilder::default();
 
   let flist = flow.add("flist", slang.flist()?)?;
