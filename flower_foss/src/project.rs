@@ -4,19 +4,27 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 use crate::{
-  sv::SystemVerilogLibrary,
+  sv::{Params, SystemVerilogLibrary},
   tool::{cocotb::CocotbTests, yosys::FormalConfig},
 };
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Project {
   pub sv_lib: BTreeMap<String, SystemVerilogLibrary>,
-  /// The cocotb tests of each top.
+  /// The configuration of each top. A top without one is only linted and built.
   #[serde(default)]
-  pub cocotb: BTreeMap<String, CocotbTests>,
-  /// The formal verification of each top.
+  pub top: BTreeMap<String, Top>,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Top {
+  /// Parameters, overriding their defaults.
   #[serde(default)]
-  pub formal: BTreeMap<String, FormalConfig>,
+  pub params: Params,
+  pub cocotb: Option<CocotbTests>,
+  pub formal: Option<FormalConfig>,
 }
 impl Project {
   pub async fn with_paths_canonicalized_on(
@@ -24,9 +32,12 @@ impl Project {
     project_dir: &Utf8Path,
   ) -> ConstructionResult<Self> {
     let sv_paths = self.sv_lib.values_mut().flat_map(SystemVerilogLibrary::paths_mut);
-    let cocotb_paths = self.cocotb.values_mut().flat_map(|tests| tests.test_modules.iter_mut());
-    let formal_paths = self.formal.values_mut().flat_map(|formal| formal.props.iter_mut());
-    for path in sv_paths.chain(cocotb_paths).chain(formal_paths) {
+    let top_paths = self.top.values_mut().flat_map(|top| {
+      let cocotb_paths = top.cocotb.iter_mut().flat_map(|tests| tests.test_modules.iter_mut());
+      let formal_paths = top.formal.iter_mut().flat_map(|formal| formal.props.iter_mut());
+      cocotb_paths.chain(formal_paths)
+    });
+    for path in sv_paths.chain(top_paths) {
       *path = canonicalize_on(path, project_dir).await?;
     }
     Ok(self)

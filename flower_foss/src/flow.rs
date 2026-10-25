@@ -23,7 +23,12 @@ pub fn system_verilog_flows(
   project: &Project,
   test_params: &[Utf8PathBuf],
 ) -> ConstructionResult<FlowDescription> {
-  let design = SystemVerilogTop { top, libs: project.sv_lib.values().collect() };
+  let config = project.top.get(top);
+  let design = SystemVerilogTop {
+    top,
+    libs: project.sv_lib.values().collect(),
+    params: config.map(|config| &config.params),
+  };
   let slang = Slang::from(&design);
   let verilator = Verilator { design: &design, config: Default::default() };
   let mut flow = FlowBuilder::default();
@@ -35,11 +40,11 @@ pub fn system_verilog_flows(
   let lints = flow.collect("all_lints", [&slang_lint, &verilator_lint])?;
   flow.add("verilator_build", verilator.build(&flist_file, [])?)?;
 
-  if let Some(tests) = project.cocotb.get(top) {
+  if let Some(tests) = config.and_then(|config| config.cocotb.as_ref()) {
     cocotb_flows(&mut flow, &verilator, &flist_file, tests, test_params)?;
   }
 
-  if let Some(config) = project.formal.get(top) {
+  if let Some(config) = config.and_then(|config| config.formal.as_ref()) {
     formal_flows(&mut flow, &Formal { design: &design, config }, &flist_file, &lints)?;
   }
 

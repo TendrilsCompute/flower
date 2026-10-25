@@ -42,8 +42,11 @@ impl<'a> Formal<'a> {
     let top = self.design.top;
 
     let props: Vec<_> = self.config.props.iter().map(|path| format!("{{{path}}}")).collect();
+    let params: Vec<_> =
+      self.design.param_overrides().map(|param| format!("-G {{{param}}}")).collect();
     let config = format!(
-      "source {SCRIPT_FILE}\ngenerate_smt2 {{{top}}} {{{flist_path}}} [list {}] {{{}}}\n",
+      "source {SCRIPT_FILE}\ngenerate_smt2 {{{top}}} {{{flist_path}}} [list {}] [list {}] {{{}}}\n",
+      params.join(" "),
       props.join(" "),
       self.smt2_file(),
     );

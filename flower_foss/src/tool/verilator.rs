@@ -47,6 +47,7 @@ impl<'a> Verilator<'a> {
       .into_iter()
       .chain(waiver_files.iter().map(|p| p.as_str()))
       .map(Arg::from)
+      .chain(self.design.param_overrides().map(|param| Arg::from(format!("-G{param}"))))
       .chain(additional_args)
       .collect();
 

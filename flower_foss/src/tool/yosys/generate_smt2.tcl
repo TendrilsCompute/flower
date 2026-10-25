@@ -1,13 +1,14 @@
 # Converts a design and its properties into an SMT2 model of their state transitions.
 # - top: the top module
 # - flist: the flist of the design
+# - params: a list of read_slang arguments setting parameters, e.g. `-G Depth=5`
 # - props: a list of property files
 # - smt2: the SMT2 file to write
-proc generate_smt2 {top flist props smt2} {
+proc generate_smt2 {top flist params props smt2} {
   yosys echo on
 
   # parse SystemVerilog using the slang plugin
-  yosys read_slang --top $top -f $flist {*}$props
+  yosys read_slang --top $top -f $flist {*}$params {*}$props
 
   # create basic netlist
   yosys prep -top $top
