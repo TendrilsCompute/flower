@@ -1,6 +1,6 @@
 use camino::Utf8PathBuf;
 use flower::flow::{
-  command::{Arg, Command, ExternalCommand, Extract, FromFile, MatchCount},
+  command::{Command, ExternalCommand, Extract, FromFile, MatchCount, Value},
   node::Node,
 };
 use flower_construct::{ConstructionResult, get_executable};
@@ -20,8 +20,8 @@ impl<'a> From<&'a SystemVerilogTop<'a>> for Slang<'a> {
 }
 
 impl<'a> Slang<'a> {
-  pub fn slang_param_args(&self) -> impl Iterator<Item = Arg> {
-    self.design.param_overrides().flat_map(|param| ["-G".to_string(), param]).map(Arg::from)
+  pub fn slang_param_args(&self) -> impl Iterator<Item = Value> {
+    self.design.param_overrides().flat_map(|param| ["-G".to_string(), param]).map(Value::from)
   }
 
   fn depfiles(&self) -> ConstructionResult<Command> {
@@ -43,7 +43,7 @@ impl<'a> Slang<'a> {
         .into_iter()
         .map(str::to_string),
       )
-      .map(Arg::from)
+      .map(Value::from)
       .chain(self.slang_param_args())
       .collect();
 
@@ -67,7 +67,7 @@ impl<'a> Slang<'a> {
 
     let args = ["--top", self.design.top, "-f", flist_path.as_str()]
       .into_iter()
-      .map(Arg::from)
+      .map(Value::from)
       .chain(self.slang_param_args())
       .collect();
 

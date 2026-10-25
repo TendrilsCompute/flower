@@ -109,7 +109,7 @@ impl Node {
     if self
       .commands
       .iter()
-      .zip(info.results.iter())
+      .zip(info.commands.iter())
       .any(|(cmd, result)| !cmd.no_check() && result.status != 0)
     {
       debug!("{} requires rerun due to failure last run.", name());
@@ -117,7 +117,7 @@ impl Node {
     }
 
     let hashes = self.required_path_hashes(node_dir, hasher).await?;
-    Ok(hashes != info.required_path_hashes)
+    Ok(hashes != info.required_paths)
   }
 
   /// Runs the commands in `node_dir`, an existing empty directory
@@ -131,11 +131,11 @@ impl Node {
       let exec_result = command.run(node_dir).await.map_err(NodeError::Execute)?;
       let status = exec_result.status;
 
-      info.results.push(exec_result);
+      info.commands.push(exec_result);
 
       if !command.no_check() && status != 0 {
         if let Ok(hashes) = self.required_path_hashes(node_dir, &mut *hasher.lock().await).await {
-          info.required_path_hashes = hashes;
+          info.required_paths = hashes;
         }
         info.write(node_dir).await?;
         let run_info = NodeRunInfo::manifest_path(node_dir);
@@ -143,8 +143,7 @@ impl Node {
       }
     }
 
-    info.required_path_hashes =
-      self.required_path_hashes(node_dir, &mut *hasher.lock().await).await?;
+    info.required_paths = self.required_path_hashes(node_dir, &mut *hasher.lock().await).await?;
 
     info.write(node_dir).await?;
     Ok(())
@@ -167,8 +166,8 @@ impl Node {
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct NodeRunInfo {
-  results: Vec<CommandResult>,
-  required_path_hashes: BTreeMap<Utf8PathBuf, PathHash>,
+  commands: Vec<CommandResult>,
+  required_paths: BTreeMap<Utf8PathBuf, PathHash>,
 }
 
 impl NodeRunInfo {

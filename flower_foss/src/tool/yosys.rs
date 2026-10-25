@@ -1,6 +1,6 @@
 use camino::Utf8PathBuf;
 use flower::flow::{
-  command::{Arg, Command, ExternalCommand},
+  command::{Command, ExternalCommand, Value},
   node::Node,
 };
 use flower_construct::{
@@ -53,7 +53,7 @@ impl<'a> Formal<'a> {
 
     let yosys = ExternalCommand {
       exec: get_executable("yosys")?,
-      args: ["-c", CONFIG_FILE].map(Arg::from).into(),
+      args: ["-c", CONFIG_FILE].map(Value::from).into(),
       ..Default::default()
     };
     let commands = vec![
@@ -81,9 +81,9 @@ impl<'a> Formal<'a> {
     let args = induction
       .then_some("-i".into())
       .into_iter()
-      .chain(["-t", &steps, "--noprogress"].map(Arg::from))
+      .chain(["-t", &steps, "--noprogress"].map(Value::from))
       .chain(dumps.into_iter().flat_map(|(flag, ext)| [flag.into(), format!("{top}.{ext}").into()]))
-      .chain([Arg::from(smt2.as_str())])
+      .chain([Value::from(smt2.as_str())])
       .collect();
 
     // yosys-smtbmc runs the solver, yices by default, from PATH.

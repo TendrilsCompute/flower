@@ -2,7 +2,7 @@ use std::env;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use flower::flow::{
-  command::{Arg, Command, Env, EnvValue, ExternalCommand, Extract, FromFile, MatchCount},
+  command::{Command, Env, ExternalCommand, Extract, FromFile, MatchCount, Value},
   node::Node,
 };
 use flower_construct::{
@@ -44,7 +44,7 @@ pub fn config() -> ConstructionResult<Node> {
   let cocotb_config = |args: &[&str], stdout: &str| -> Command {
     ExternalCommand {
       exec: exec.clone(),
-      args: args.iter().copied().map(Arg::from).collect(),
+      args: args.iter().copied().map(Value::from).collect(),
       stdout: Some(stdout.into()),
       ..Default::default()
     }
@@ -114,14 +114,14 @@ pub fn test(
 
   let mut sim_env = env.clone();
   sim_env.extend(env_vars([
-    ("LIBPYTHON_LOC", EnvValue::File(libpython.clone())),
-    ("PYGPI_PYTHON_BIN", EnvValue::File(python_bin.clone())),
+    ("LIBPYTHON_LOC", Value::FromFile(libpython.clone())),
+    ("PYGPI_PYTHON_BIN", Value::FromFile(python_bin.clone())),
   ]));
   let run = ExternalCommand { exec: sim.into(), env: sim_env, ..Default::default() };
   // The simulator succeeds even if tests fail.
   let check = ExternalCommand {
     exec: get_executable("python3")?,
-    args: ["-m", "cocotb_tools.check_results", "results.xml"].map(Arg::from).into(),
+    args: ["-m", "cocotb_tools.check_results", "results.xml"].map(Value::from).into(),
     env,
     stdout: None,
   };

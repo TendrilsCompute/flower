@@ -8,7 +8,7 @@ mod write;
 pub use write::{Extract, FromFile, MatchCount, TextPart};
 
 pub type ExitStatus = i32;
-pub type Env = BTreeMap<String, EnvValue>;
+pub type Env<V = Value> = BTreeMap<String, V>;
 
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub enum Command {
@@ -37,15 +37,7 @@ impl Command {
   pub fn input_files(&self) -> Vec<&Utf8PathBuf> {
     match self {
       Self::External { command, .. } => {
-        let arg_files = command.args.iter().filter_map(|arg| match arg {
-          Arg::Lines(path) => Some(path),
-          Arg::Literal(_) => None,
-        });
-        let env_files = command.env.values().filter_map(|value| match value {
-          EnvValue::File(path) => Some(path),
-          EnvValue::Literal(_) => None,
-        });
-        arg_files.chain(env_files).collect()
+        command.args.iter().chain(command.env.values()).filter_map(Value::path).collect()
       }
       Self::Write { parts, .. } => parts.iter().filter_map(TextPart::path).collect(),
     }
@@ -69,7 +61,7 @@ impl Command {
 
   pub async fn run(&self, run_dir: &Utf8Path) -> Result<CommandResult, CommandError> {
     Ok(match self {
-      Self::External { command, .. } => command.run(run_dir).await?,
+      Self::External { command, .. } => command.resolve(run_dir).await?.run(run_dir).await?,
       Self::Write { path, parts, .. } => write::run(run_dir, path, parts).await,
     })
   }
@@ -81,75 +73,78 @@ impl From<ExternalCommand> for Command {
   }
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ExternalCommand {
-  pub env: Env,
-  /// A relative path is relative to the node's directory.
+/// A program to run, with [`Value`]s for its arguments and environment,
+/// or once they're resolved, `String`s.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ExternalCommand<V = Value> {
+  pub env: Env<V>,
   pub exec: Utf8PathBuf,
-  pub args: Vec<Arg>,
-  /// A file stdout is also written to. A relative path is relative to the node's directory.
+  pub args: Vec<V>,
+  /// A file stdout is also written to.
   pub stdout: Option<Utf8PathBuf>,
 }
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum Arg {
-  Literal(String),
-  /// One argument per non-blank line of a file, read just before the command runs.
-  /// A relative path is relative to the node's directory.
-  Lines(Utf8PathBuf),
+impl<V> Default for ExternalCommand<V> {
+  fn default() -> Self {
+    Self { env: Env::new(), exec: Utf8PathBuf::new(), args: Vec::new(), stdout: None }
+  }
 }
-impl Arg {
-  async fn resolve(&self, run_dir: &Utf8Path) -> Result<Vec<String>, CommandError> {
+
+/// An argument or environment variable's value: a literal, or a file read just before the
+/// command runs.
+///
+/// When taking values from a file:
+/// - An environment variable takes the whole content of the file as a value.
+/// - An argument is added for each line of the file.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum Value {
+  Literal(String),
+  FromFile(Utf8PathBuf),
+}
+impl Value {
+  fn path(&self) -> Option<&Utf8PathBuf> {
+    match self {
+      Self::Literal(_) => None,
+      Self::FromFile(path) => Some(path),
+    }
+  }
+
+  /// The file's contents, failing with `err`.
+  async fn read(
+    path: &Utf8Path,
+    run_dir: &Utf8Path,
+    err: fn(Utf8PathBuf, io::Error) -> CommandError,
+  ) -> Result<String, CommandError> {
+    let path = run_dir.join(path);
+    fs::read_to_string(&path).await.map_err(|e| err(path, e))
+  }
+
+  async fn resolve_args(&self, run_dir: &Utf8Path) -> Result<Vec<String>, CommandError> {
     match self {
       Self::Literal(arg) => Ok(vec![arg.clone()]),
-      Self::Lines(path) => {
-        let path = run_dir.join(path);
-        let contents =
-          fs::read_to_string(&path).await.map_err(|err| CommandError::ArgFile(path, err))?;
+      Self::FromFile(path) => {
+        let contents = Self::read(path, run_dir, CommandError::ArgFile).await?;
         Ok(contents.lines().filter(|line| !line.trim().is_empty()).map(str::to_string).collect())
       }
     }
   }
-}
 
-impl From<String> for Arg {
-  fn from(arg: String) -> Self {
-    Self::Literal(arg)
-  }
-}
-impl From<&str> for Arg {
-  fn from(arg: &str) -> Self {
-    Self::Literal(arg.to_string())
-  }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum EnvValue {
-  Literal(String),
-  /// The contents of a file without leading or trailing whitespace, read just before the command
-  /// runs. A relative path is relative to the node's directory.
-  File(Utf8PathBuf),
-}
-impl EnvValue {
-  async fn resolve(&self, run_dir: &Utf8Path) -> Result<String, CommandError> {
+  async fn resolve_env(&self, run_dir: &Utf8Path) -> Result<String, CommandError> {
     match self {
       Self::Literal(value) => Ok(value.clone()),
-      Self::File(path) => {
-        let path = run_dir.join(path);
-        let contents =
-          fs::read_to_string(&path).await.map_err(|err| CommandError::EnvFile(path, err))?;
+      Self::FromFile(path) => {
+        let contents = Self::read(path, run_dir, CommandError::EnvFile).await?;
         Ok(contents.trim().to_string())
       }
     }
   }
 }
 
-impl From<String> for EnvValue {
+impl From<String> for Value {
   fn from(value: String) -> Self {
     Self::Literal(value)
   }
 }
-impl From<&str> for EnvValue {
+impl From<&str> for Value {
   fn from(value: &str) -> Self {
     Self::Literal(value.to_string())
   }
@@ -157,6 +152,8 @@ impl From<&str> for EnvValue {
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct CommandResult {
+  /// An external command as it ran, with its values resolved.
+  pub command: Option<ExternalCommand<String>>,
   #[serde(serialize_with = "as_bytes")]
   pub stdout: Vec<u8>,
   #[serde(serialize_with = "as_bytes")]
@@ -170,20 +167,27 @@ fn as_bytes<S: Serializer>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Erro
 }
 
 impl ExternalCommand {
-  pub async fn run(&self, run_dir: &Utf8Path) -> Result<CommandResult, CommandError> {
+  /// The command as it runs in `run_dir`, with its values read.
+  pub async fn resolve(&self, run_dir: &Utf8Path) -> Result<ExternalCommand<String>, CommandError> {
     let mut args = Vec::new();
     for arg in &self.args {
-      args.extend(arg.resolve(run_dir).await?);
+      args.extend(arg.resolve_args(run_dir).await?);
     }
-    let mut env = Vec::new();
+    let mut env = Env::new();
     for (name, value) in &self.env {
-      env.push((name, value.resolve(run_dir).await?));
+      env.insert(name.clone(), value.resolve_env(run_dir).await?);
     }
+    Ok(ExternalCommand { env, exec: self.exec.clone(), args, stdout: self.stdout.clone() })
+  }
+}
+
+impl ExternalCommand<String> {
+  pub async fn run(self, run_dir: &Utf8Path) -> Result<CommandResult, CommandError> {
     // How a relative program is found with `current_dir` differs between platforms.
     let output = process::Command::new(run_dir.join(&self.exec))
       .env_clear()
-      .envs(env)
-      .args(args)
+      .envs(&self.env)
+      .args(&self.args)
       .current_dir(run_dir)
       .kill_on_drop(true)
       .output()
@@ -193,6 +197,7 @@ impl ExternalCommand {
       fs::write(&path, &output.stdout).await.map_err(|err| CommandError::StdoutFile(path, err))?;
     }
     Ok(CommandResult {
+      command: Some(self),
       stdout: output.stdout,
       stderr: output.stderr,
       status: exit_status_code(output.status),

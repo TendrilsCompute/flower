@@ -128,7 +128,7 @@ impl Extract {
 pub(super) async fn run(run_dir: &Utf8Path, path: &Utf8Path, parts: &[TextPart]) -> CommandResult {
   match write_text(run_dir, path, parts).await {
     Ok(()) => CommandResult::default(),
-    Err(message) => CommandResult { stderr: message.into(), stdout: Default::default(), status: 1 },
+    Err(message) => CommandResult { stderr: message.into(), status: 1, ..Default::default() },
   }
 }
 

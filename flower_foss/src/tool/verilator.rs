@@ -1,6 +1,6 @@
 use camino::Utf8PathBuf;
 use flower::flow::{
-  command::{Arg, Env, ExternalCommand},
+  command::{Env, ExternalCommand, Value},
   node::Node,
 };
 use flower_construct::{
@@ -37,7 +37,7 @@ impl<'a> Verilator<'a> {
   fn base_node(
     &self,
     flist_path: impl Into<Utf8PathBuf>,
-    additional_args: impl IntoIterator<Item = Arg>,
+    additional_args: impl IntoIterator<Item = Value>,
     env: Env,
   ) -> ConstructionResult<Node> {
     let flist_path = flist_path.into();
@@ -46,8 +46,8 @@ impl<'a> Verilator<'a> {
     let args = ["--top-module", self.design.top, "-f", flist_path.as_str()]
       .into_iter()
       .chain(waiver_files.iter().map(|p| p.as_str()))
-      .map(Arg::from)
-      .chain(self.design.param_overrides().map(|param| Arg::from(format!("-G{param}"))))
+      .map(Value::from)
+      .chain(self.design.param_overrides().map(|param| Value::from(format!("-G{param}"))))
       .chain(additional_args)
       .collect();
 
@@ -62,7 +62,7 @@ impl<'a> Verilator<'a> {
   }
 
   pub fn lint(&self, flist_path: impl Into<Utf8PathBuf>) -> ConstructionResult<Node> {
-    self.base_node(flist_path, [Arg::from("--lint-only")], Default::default())
+    self.base_node(flist_path, [Value::from("--lint-only")], Default::default())
   }
 
   fn build_env() -> ConstructionResult<Env> {
@@ -75,7 +75,7 @@ impl<'a> Verilator<'a> {
     flist_path: impl Into<Utf8PathBuf>,
     additional_args: impl IntoIterator<Item = &'args str>,
   ) -> ConstructionResult<Node> {
-    let args = ["--binary"].into_iter().chain(additional_args).map(Arg::from);
+    let args = ["--binary"].into_iter().chain(additional_args).map(Value::from);
     self.base_node(flist_path, args, Self::build_env()?)
   }
 
@@ -92,8 +92,8 @@ impl<'a> Verilator<'a> {
       ["--cc", "--exe", "--build", "--vpi", "--public-flat-rw", "--prefix", COCOTB_SIM_PREFIX]
         .into_iter()
         .chain(additional_args)
-        .map(Arg::from)
-        .chain([Arg::Lines(cocotb_args_file.clone())]);
+        .map(Value::from)
+        .chain([Value::FromFile(cocotb_args_file.clone())]);
 
     let mut node = self.base_node(flist_path, args, Self::build_env()?)?;
     node.required_paths.push(cocotb_args_file);
