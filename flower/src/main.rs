@@ -36,9 +36,9 @@ enum Command {
     /// The exported flow
     #[arg(long)]
     flow: Utf8PathBuf,
-    /// The node to run
-    #[arg(short, long)]
-    node: String,
+    /// A set of nodes to run, rather than every node
+    #[arg(short, long, required_if_eq("no_deps", "true"))]
+    node: Vec<String>,
     /// The flow directory, holding a numbered directory per run,
     /// or with `--no-history`, the run directory itself
     #[arg(short, long, default_value = "./run")]

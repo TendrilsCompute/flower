@@ -54,12 +54,10 @@ pub struct FlowRunner {
 }
 
 impl FlowRunner {
-  /// Runs the node `name` and its dependencies in a new numbered run in `flow_dir`,
-  /// or without history, in `flow_dir` itself. Returns the run directory.
   pub async fn run(
     flow: FlowDescription,
     flow_dir: &Utf8Path,
-    name: &str,
+    names: &[String],
     config: RunConfig,
   ) -> FlowResult<Utf8PathBuf> {
     let flow_dir = canonical_dir(flow_dir).await?;
@@ -78,7 +76,12 @@ impl FlowRunner {
       spawning: BTreeSet::new(),
     };
 
-    let result = runner.spawn_node(name).await;
+    let names = match names {
+      [] => runner.nodes.keys().cloned().collect(),
+      names => names.to_vec(),
+    };
+    let tasks: Vec<_> = names.iter().map(|name| runner.spawn_node(name)).collect();
+    let result = join_all(tasks).await.into_iter().collect::<FlowResult<()>>();
     // Let the other nodes finish in the case of an error.
     join_all(runner.spawned.values().cloned()).await;
 

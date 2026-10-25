@@ -38,10 +38,11 @@ pub fn system_verilog_flows(
   let slang_lint = flow.add("slang_lint", slang.lint(&flist_file)?)?;
   let verilator_lint = flow.add("verilator_lint", verilator.lint(&flist_file)?)?;
   let lints = flow.collect("all_lints", [&slang_lint, &verilator_lint])?;
-  flow.add("verilator_build", verilator.build(&flist_file, [])?)?;
 
   if let Some(tests) = config.and_then(|config| config.cocotb.as_ref()) {
     cocotb_flows(&mut flow, &verilator, &flist_file, tests, test_params)?;
+  } else {
+    flow.add("verilator_build", verilator.build(&flist_file, [])?)?;
   }
 
   if let Some(config) = config.and_then(|config| config.formal.as_ref()) {
