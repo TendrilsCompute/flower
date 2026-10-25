@@ -19,7 +19,8 @@ impl PathHasher {
     // Building the tree blocks (merkle_hash parallelises it with rayon),
     // so it is kept off the async runtime's thread.
     let root = path.to_owned();
-    let tree = task::spawn_blocking(move || MerkleTree::builder(root).build()).await??;
+    let build = move || MerkleTree::builder(root).hash_names(true).build();
+    let tree = task::spawn_blocking(build).await??;
     // If a subdirectory has previously been hashed,
     // we are sadly not reusing it when hashing the parent directory.
     let hash = tree.root.item.hash.clone();
