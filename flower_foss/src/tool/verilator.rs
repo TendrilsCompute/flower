@@ -79,6 +79,12 @@ impl<'a> Verilator<'a> {
     self.base_node(flist_path, args, Self::build_env()?)
   }
 
+  pub fn run(&self, build: &NodeRef) -> Node {
+    let exec = build.file(OBJ_DIR).join(format!("V{}", self.design.top));
+    let run = ExternalCommand { exec: exec.clone(), ..Default::default() };
+    Node { required_paths: vec![exec], commands: vec![run.into()] }
+  }
+
   /// Builds the [`cocotb_sim`] for cocotb to drive through VPI,
   /// linking in cocotb as configured by the [`cocotb::config`] node.
   pub fn cocotb_build<'args>(

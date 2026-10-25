@@ -39,14 +39,19 @@ pub fn system_verilog_flows(
   let verilator_lint = flow.add("verilator_lint", verilator.lint(&flist_file)?)?;
   let lints = flow.collect("all_lints", [&slang_lint, &verilator_lint])?;
 
-  if let Some(tests) = config.and_then(|config| config.cocotb.as_ref()) {
-    cocotb_flows(&mut flow, &verilator, &flist_file, tests, test_params)?;
-  } else {
-    flow.add("verilator_build", verilator.build(&flist_file, [])?)?;
-  }
+  if let Some(config) = config {
+    if config.verilator_testbench {
+      let build = flow.add("verilator_build", verilator.build(&flist_file, [])?)?;
+      flow.add("verilator_testbench", verilator.run(&build))?;
+    }
 
-  if let Some(config) = config.and_then(|config| config.formal.as_ref()) {
-    formal_flows(&mut flow, &Formal { design: &design, config }, &flist_file, &lints)?;
+    if let Some(tests) = config.cocotb.as_ref() {
+      cocotb_flows(&mut flow, &verilator, &flist_file, tests, test_params)?;
+    }
+
+    if let Some(config) = config.formal.as_ref() {
+      formal_flows(&mut flow, &Formal { design: &design, config }, &flist_file, &lints)?;
+    }
   }
 
   Ok(flow.build())

@@ -25,6 +25,8 @@ pub struct Top {
   pub params: Params,
   pub cocotb: Option<CocotbTests>,
   pub formal: Option<FormalConfig>,
+  #[serde(default)]
+  pub verilator_testbench: bool,
 }
 impl Project {
   pub async fn with_paths_canonicalized_on(
