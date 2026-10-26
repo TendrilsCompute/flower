@@ -1,6 +1,6 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use clap::Args;
-use futures::future::{BoxFuture, FutureExt, Shared, join_all};
+use futures::future::{BoxFuture, FutureExt, Shared, join_all, try_join_all};
 use std::{
   collections::{BTreeMap, BTreeSet},
   future,
@@ -36,6 +36,9 @@ pub struct RunConfig {
   /// Throws an error if they're not present.
   #[arg(long, requires = "no_history")]
   pub no_deps: bool,
+  /// Stop at the first failure, rather than letting the other nodes finish
+  #[arg(long)]
+  pub fail_fast: bool,
 }
 
 struct RunContext {
@@ -49,8 +52,8 @@ struct RunContext {
 pub struct FlowRunner {
   nodes: BTreeMap<NodeId, Arc<Node>>,
   context: Arc<RunContext>,
-  spawned: BTreeMap<NodeId, FlowTask>,
-  spawning: BTreeSet<NodeId>,
+  tasks: BTreeMap<NodeId, FlowTask>,
+  creating: BTreeSet<NodeId>,
 }
 
 impl FlowRunner {
@@ -59,33 +62,28 @@ impl FlowRunner {
     flow_dir: &Utf8Path,
     names: &[String],
     config: RunConfig,
-  ) -> FlowResult<Utf8PathBuf> {
+  ) -> FlowResult<()> {
     let flow_dir = canonical_dir(flow_dir).await?;
     let run_dirs = match config.no_history {
       true => vec![flow_dir.clone()],
       false => Self::numbered_run_dirs(&flow_dir).await?,
     };
-    let run_dir = run_dirs[0].clone();
-    info!("Running in {run_dir}.");
+    info!("Running in {}.", run_dirs[0]);
 
     let context = RunContext { flow_dir, run_dirs, config, hasher: Default::default() };
     let mut runner = Self {
       nodes: flow.nodes.into_iter().map(|(name, node)| (name, Arc::new(node))).collect(),
       context: Arc::new(context),
-      spawned: BTreeMap::new(),
-      spawning: BTreeSet::new(),
+      tasks: BTreeMap::new(),
+      creating: BTreeSet::new(),
     };
 
     let names = match names {
       [] => runner.nodes.keys().cloned().collect(),
       names => names.to_vec(),
     };
-    let tasks: Vec<_> = names.iter().map(|name| runner.spawn_node(name)).collect();
-    let result = join_all(tasks).await.into_iter().collect::<FlowResult<()>>();
-    // Let the other nodes finish in the case of an error.
-    join_all(runner.spawned.values().cloned()).await;
-
-    result.map(|()| run_dir)
+    let targets: Vec<_> = names.iter().map(|name| runner.node_task(name)).collect();
+    join_tasks(targets, runner.context.config.fail_fast).await
   }
 
   /// Creates the next numbered run directory and points `latest` at it.
@@ -120,9 +118,9 @@ impl FlowRunner {
     Ok([run_dir].into_iter().chain(prev_runs.into_iter().map(|(_, dir)| dir)).collect())
   }
 
-  /// Recursively spawns the node and its dependencies, returning a shared future.
-  fn spawn_node(&mut self, name: &str) -> FlowTask {
-    if let Some(task) = self.spawned.get(name) {
+  /// The node's shared future, creating it, and recursively its dependencies', if needed.
+  fn node_task(&mut self, name: &str) -> FlowTask {
+    if let Some(task) = self.tasks.get(name) {
       return task.clone();
     }
 
@@ -132,7 +130,7 @@ impl FlowRunner {
     let Some(node) = self.nodes.get(name).cloned() else {
       return flow_err(FlowError::NodeNotFound(name.into()));
     };
-    // Checked before the node is marked as spawning, which an early return would leave it as.
+    // Checked before the node is marked as being created, which an early return would leave it as.
     if let Err(err) = node.check_paths(&self.context.flow_dir) {
       return node_err(err);
     }
@@ -144,7 +142,7 @@ impl FlowRunner {
       return node_err(NodeError::RequiringOwnPath);
     }
 
-    if !self.spawning.insert(name.into()) {
+    if !self.creating.insert(name.into()) {
       return flow_err(FlowError::CircularDependency(name.into()));
     }
     debug!("{name} depends on {dep_names:?}.");
@@ -152,33 +150,23 @@ impl FlowRunner {
       .iter()
       .map(|dep| match self.context.config.no_deps {
         true => self.existing_output(dep),
-        false => self.spawn_node(dep),
+        false => self.node_task(dep),
       })
       .collect();
 
     let node_fut = {
       let (context, name) = (self.context.clone(), name.to_string());
       async move {
-        for dep in dep_tasks {
-          dep.await?;
-        }
+        join_tasks(dep_tasks, context.config.fail_fast).await?;
         context.run_node(&name, &node).await
       }
     };
+    let task = node_fut.boxed().shared();
 
-    let shared_task = tokio::spawn(node_fut)
-      .map(|res| match res {
-        Ok(Ok(())) => Ok(()),
-        Ok(Err(node_run_error)) => Err(node_run_error),
-        Err(join_error) => Err(join_error.into()),
-      })
-      .boxed()
-      .shared();
+    let name = self.creating.take(name).expect("The name is expected to be in creating.");
+    self.tasks.insert(name, task.clone());
 
-    let name = self.spawning.take(name).expect("The name is expected to be in spawning.");
-    self.spawned.insert(name, shared_task.clone());
-
-    shared_task
+    task
   }
 
   fn existing_output(&self, dep: &str) -> FlowTask {
@@ -245,6 +233,13 @@ impl RunContext {
       return Ok(Some(dir));
     }
     Ok(None)
+  }
+}
+
+async fn join_tasks(tasks: Vec<FlowTask>, fail_fast: bool) -> FlowResult<()> {
+  match fail_fast {
+    true => try_join_all(tasks).await.map(drop),
+    false => join_all(tasks).await.into_iter().collect(),
   }
 }
 

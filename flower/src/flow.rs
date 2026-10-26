@@ -7,7 +7,7 @@ mod run;
 use camino::Utf8PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
-use tokio::{io, task::JoinError};
+use tokio::io;
 
 use crate::util::serialization::SerializationError;
 pub use description::FlowDescription;
@@ -22,8 +22,6 @@ fn io_err(path: impl Into<Utf8PathBuf>) -> impl FnOnce(io::Error) -> FlowError {
 type FlowResult<T> = Result<T, FlowError>;
 #[derive(Clone, Debug, Error)]
 pub enum FlowError {
-  #[error("Async task didn't complete: {0}")]
-  PanicOrAbort(Arc<JoinError>),
   #[error("Node '{0}' could not be found.")]
   NodeNotFound(String),
   #[error("Circular dependency involving node '{0}'.")]
@@ -38,9 +36,4 @@ pub enum FlowError {
   Serialization(Arc<SerializationError>),
   #[error("Dependency '{0}' has no output at {1}.")]
   MissingDependency(String, Utf8PathBuf),
-}
-impl From<JoinError> for FlowError {
-  fn from(error: JoinError) -> Self {
-    Self::PanicOrAbort(Arc::new(error))
-  }
 }
