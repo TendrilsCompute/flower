@@ -191,7 +191,8 @@ impl ExternalCommand<String> {
       .current_dir(run_dir)
       .kill_on_drop(true)
       .output()
-      .await?;
+      .await
+      .map_err(|err| CommandError::External(self.exec.clone(), err))?;
     if let Some(path) = &self.stdout {
       let path = run_dir.join(path);
       fs::write(&path, &output.stdout).await.map_err(|err| CommandError::StdoutFile(path, err))?;
@@ -214,8 +215,8 @@ fn exit_status_code(status: std::process::ExitStatus) -> ExitStatus {
 
 #[derive(Debug, Error)]
 pub enum CommandError {
-  #[error("External command execution failed: {0}")]
-  External(#[from] io::Error),
+  #[error("{0}: {1}")]
+  External(Utf8PathBuf, io::Error),
   #[error("Failed to read arguments from {0}: {1}")]
   ArgFile(Utf8PathBuf, io::Error),
   #[error("Failed to read an environment variable from {0}: {1}")]

@@ -123,7 +123,8 @@ impl Node {
   /// Runs the commands in `node_dir`, an existing empty directory
   /// whose siblings are the directories of the node's dependencies.
   pub async fn run(&self, node_dir: &Utf8Path, hasher: &Mutex<PathHasher>) -> NodeResult<()> {
-    let mut info = NodeRunInfo::default();
+    let required_paths = self.required_path_hashes(node_dir, &mut *hasher.lock().await).await?;
+    let mut info = NodeRunInfo { required_paths, ..Default::default() };
 
     self.write(node_dir).await?;
 
@@ -134,16 +135,11 @@ impl Node {
       info.commands.push(exec_result);
 
       if !command.no_check() && status != 0 {
-        if let Ok(hashes) = self.required_path_hashes(node_dir, &mut *hasher.lock().await).await {
-          info.required_paths = hashes;
-        }
         info.write(node_dir).await?;
         let run_info = NodeRunInfo::manifest_path(node_dir);
         return Err(NodeError::NonZeroExitStatus { status, run_info });
       }
     }
-
-    info.required_paths = self.required_path_hashes(node_dir, &mut *hasher.lock().await).await?;
 
     info.write(node_dir).await?;
     Ok(())
