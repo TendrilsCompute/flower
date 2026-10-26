@@ -6,7 +6,7 @@ use std::{
   future,
   sync::Arc,
 };
-use tokio::{fs, io, sync::Mutex};
+use tokio::{fs, io};
 use tracing::{debug, info};
 
 use super::{
@@ -46,7 +46,7 @@ struct RunContext {
   /// The run directory, then earlier run directories, latest first, whose outputs can be reused.
   run_dirs: Vec<Utf8PathBuf>,
   config: RunConfig,
-  hasher: Mutex<PathHasher>,
+  hasher: PathHasher,
 }
 
 pub struct FlowRunner {
@@ -193,10 +193,8 @@ impl RunContext {
     if !self.config.force_rerun
       && let Some(latest) = self.latest_output(name).await?
     {
-      let rerun_required = {
-        let mut hasher = self.hasher.lock().await;
-        node.rerun_required(&latest, &node_dir, &mut hasher).await.map_err(node_err)?
-      };
+      let rerun_required =
+        node.rerun_required(&latest, &node_dir, &self.hasher).await.map_err(node_err)?;
       if !rerun_required {
         info!("Skipping {name}.");
         // Linked to, unless it's already in place, as without history.

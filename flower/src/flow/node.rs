@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
 use tokio::fs;
-use tokio::sync::Mutex;
 use tracing::debug;
 
 use super::command::CommandError;
@@ -90,7 +89,7 @@ impl Node {
     &self,
     previous: &Utf8Path,
     node_dir: &Utf8Path,
-    hasher: &mut PathHasher,
+    hasher: &PathHasher,
   ) -> NodeResult<bool> {
     let name = || node_dir.file_name().unwrap();
 
@@ -122,8 +121,8 @@ impl Node {
 
   /// Runs the commands in `node_dir`, an existing empty directory
   /// whose siblings are the directories of the node's dependencies.
-  pub async fn run(&self, node_dir: &Utf8Path, hasher: &Mutex<PathHasher>) -> NodeResult<()> {
-    let required_paths = self.required_path_hashes(node_dir, &mut *hasher.lock().await).await?;
+  pub async fn run(&self, node_dir: &Utf8Path, hasher: &PathHasher) -> NodeResult<()> {
+    let required_paths = self.required_path_hashes(node_dir, hasher).await?;
     let mut info = NodeRunInfo { required_paths, ..Default::default() };
 
     self.write(node_dir).await?;
@@ -149,7 +148,7 @@ impl Node {
   async fn required_path_hashes(
     &self,
     node_dir: &Utf8Path,
-    hasher: &mut PathHasher,
+    hasher: &PathHasher,
   ) -> NodeResult<BTreeMap<Utf8PathBuf, PathHash>> {
     let mut hashes = BTreeMap::new();
     for path in &self.required_paths {
