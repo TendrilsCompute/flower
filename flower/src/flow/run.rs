@@ -91,7 +91,6 @@ impl FlowRunner {
   /// Creates the next numbered run directory and points `latest` at it.
   /// Returns it followed by the earlier run directories, latest first.
   async fn numbered_run_dirs(flow_dir: &Utf8Path) -> FlowResult<Vec<Utf8PathBuf>> {
-    let mut number = 0;
     let mut prev_runs = Vec::new();
     let mut entries = fs::read_dir(flow_dir).await.map_err(io_err(flow_dir))?;
     while let Some(entry) = entries.next_entry().await.map_err(io_err(flow_dir))? {
@@ -101,12 +100,12 @@ impl FlowRunner {
         && name.bytes().all(|b| b.is_ascii_digit())
         && let Ok(prev_number) = name.parse::<u32>()
       {
-        number = u32::max(number, prev_number + 1);
-        prev_runs.push(flow_dir.join(name))
+        prev_runs.push((prev_number, flow_dir.join(name)))
       }
     }
-    prev_runs.sort_unstable_by(|a, b| b.cmp(a));
+    prev_runs.sort_unstable_by(|(a, _), (b, _)| b.cmp(a));
 
+    let number = prev_runs.first().map_or(0, |(prev_number, _)| prev_number + 1);
     let run_name = format!("{number:03}");
     let run_dir = flow_dir.join(&run_name);
     fs::create_dir(&run_dir).await.map_err(io_err(&run_dir))?;
@@ -118,8 +117,7 @@ impl FlowRunner {
     }
     fs::symlink(&run_name, &latest).await.map_err(io_err(&latest))?;
 
-    prev_runs.insert(0, run_dir);
-    Ok(prev_runs)
+    Ok([run_dir].into_iter().chain(prev_runs.into_iter().map(|(_, dir)| dir)).collect())
   }
 
   /// Recursively spawns the node and its dependencies, returning a shared future.

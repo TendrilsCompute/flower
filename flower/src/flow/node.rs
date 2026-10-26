@@ -71,9 +71,9 @@ impl Node {
     }
     for path in self.required_paths.iter().chain(inputs).chain(execs) {
       if let Ok(NodePath::External(path)) = NodePath::parse(path)
-        && path.starts_with(flow_dir)
+        && (path.starts_with(flow_dir) || flow_dir.starts_with(path))
       {
-        return Err(NodeError::ExternalPathIntoFlow(path.to_owned()));
+        return Err(NodeError::ExternalPathOverlapsFlow(path.to_owned()));
       }
     }
     Ok(())
@@ -221,8 +221,8 @@ pub enum NodeError {
   UndeclaredInputFile(Utf8PathBuf),
   #[error("Node runs {0}, which isn't covered by its required paths.")]
   UndeclaredExecutable(Utf8PathBuf),
-  #[error("Node uses {0}, which is inside the flow directory.")]
-  ExternalPathIntoFlow(Utf8PathBuf),
+  #[error("Node uses {0}, which overlaps the flow directory.")]
+  ExternalPathOverlapsFlow(Utf8PathBuf),
   #[error("Node writes to a non-local file {0}.")]
   NonLocalOutputFile(Utf8PathBuf),
   #[error(transparent)]
