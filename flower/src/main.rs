@@ -8,7 +8,7 @@ use camino::Utf8PathBuf;
 use clap::{Parser, Subcommand};
 
 use flower::{
-  flow::{FlowDescription, FlowError, FlowRunner, RunConfig},
+  flow::{FlowDescription, FlowRunner, RunConfig},
   util::hash::PathHasher,
 };
 
@@ -61,24 +61,30 @@ async fn main() -> ExitCode {
   }
 }
 
-async fn run(command: Command) -> Result<(), FlowError> {
+async fn run(command: Command) -> Result<(), String> {
+  fn to_str(err: impl ToString) -> String {
+    err.to_string()
+  }
   match command {
     Command::Hash { path } => {
-      let hash = PathHasher::default().hash(&path).await.unwrap();
-      io::stdout().lock().write_all(&hash).unwrap();
+      let hash = PathHasher::default().hash(&path).await.map_err(to_str)?;
+      let mut stdout = io::stdout().lock();
+      stdout
+        .write_all(&hash)
+        .and_then(|()| stdout.flush())
+        .map_err(|err| format!("stdout: {err}"))?;
     }
     Command::Deps { flow, out } => {
-      let toml = FlowDescription::read(&flow).await?.deps_toml()?;
+      let flow = FlowDescription::read(&flow).await.map_err(to_str)?;
+      let toml = flow.deps_toml().map_err(to_str)?;
       match out {
-        Some(path) => {
-          fs::write(&path, toml).await.map_err(|err| FlowError::Io(path, err.into()))?
-        }
+        Some(path) => fs::write(&path, toml).await.map_err(|err| format!("{path}: {err}"))?,
         None => print!("{toml}"),
       }
     }
     Command::Run { flow, node, dir, config } => {
-      let flow = FlowDescription::read(&flow).await?;
-      FlowRunner::run(flow, &dir, &node, config).await?;
+      let flow = FlowDescription::read(&flow).await.map_err(to_str)?;
+      FlowRunner::run(flow, &dir, &node, config).await.map_err(to_str)?;
     }
   }
   Ok(())
