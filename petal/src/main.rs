@@ -1,4 +1,4 @@
-use std::process::ExitCode;
+use std::{io::IsTerminal, process::ExitCode};
 
 use camino::{Utf8Path, Utf8PathBuf};
 use clap::{Args, Parser, Subcommand};
@@ -12,6 +12,7 @@ use thiserror::Error;
 use tokio::{fs, io};
 
 #[derive(Parser)]
+#[command(version)]
 struct Cli {
   #[command(subcommand)]
   command: Command,
@@ -64,7 +65,8 @@ struct FlowArgs {
 
 #[tokio::main(flavor = "local")]
 async fn main() -> ExitCode {
-  tracing_subscriber::fmt::init();
+  let stderr = std::io::stderr;
+  tracing_subscriber::fmt().with_writer(stderr).with_ansi(stderr().is_terminal()).init();
 
   match run(Cli::parse().command).await {
     Ok(()) => ExitCode::SUCCESS,

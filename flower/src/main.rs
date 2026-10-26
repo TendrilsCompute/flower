@@ -1,5 +1,5 @@
 use std::{
-  io::{self, Write},
+  io::{self, IsTerminal, Write},
   process::ExitCode,
 };
 use tokio::fs;
@@ -13,6 +13,7 @@ use flower::{
 };
 
 #[derive(Parser)]
+#[command(version)]
 struct Cli {
   #[command(subcommand)]
   command: Command,
@@ -50,7 +51,8 @@ enum Command {
 
 #[tokio::main(flavor = "local")]
 async fn main() -> ExitCode {
-  tracing_subscriber::fmt::init();
+  let stderr = std::io::stderr;
+  tracing_subscriber::fmt().with_writer(stderr).with_ansi(stderr().is_terminal()).init();
 
   match run(Cli::parse().command).await {
     Ok(()) => ExitCode::SUCCESS,
