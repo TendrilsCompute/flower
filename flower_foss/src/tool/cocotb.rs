@@ -127,7 +127,8 @@ pub fn test(
   };
 
   let mut required_paths = vec![sim.into(), libpython, python_bin];
-  required_paths.extend(tests.test_modules.iter().cloned());
+  required_paths
+    .extend(tests.test_modules.iter().filter_map(|path| path.parent()).map(Utf8PathBuf::from));
   required_paths.extend(test_params.map(Utf8PathBuf::from));
 
   Ok(Node { required_paths, commands: vec![run.into(), check.into()] })
