@@ -170,6 +170,12 @@ impl NodeRunInfo {
   pub fn manifest_path(node_dir: &Utf8Path) -> Utf8PathBuf {
     <Self as NodeManifest>::manifest_path(node_dir)
   }
+
+  /// The stderr of the last command run, or its stdout if it has no stderr.
+  pub fn last_output(&self) -> &[u8] {
+    let Some(result) = self.commands.last() else { return &[] };
+    if result.stderr.is_empty() { &result.stdout } else { &result.stderr }
+  }
 }
 
 impl NodeManifest for Node {

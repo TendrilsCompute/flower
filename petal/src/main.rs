@@ -70,6 +70,10 @@ async fn main() -> ExitCode {
 
   match run(Cli::parse().command).await {
     Ok(()) => ExitCode::SUCCESS,
+    Err(PetalError::Flow(err)) => {
+      eprintln!("Flow error: {}", err.display_with_details().await);
+      ExitCode::FAILURE
+    }
     Err(err) => {
       eprintln!("{err}");
       ExitCode::FAILURE

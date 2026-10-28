@@ -85,8 +85,13 @@ async fn run(command: Command) -> Result<(), String> {
       }
     }
     Command::Run { flow, node, dir, config } => {
-      let flow = FlowDescription::read(&flow).await.map_err(to_str)?;
-      FlowRunner::run(flow, &dir, &node, config).await.map_err(to_str)?;
+      let run_flow = async || {
+        let flow = FlowDescription::read(&flow).await?;
+        FlowRunner::run(flow, &dir, &node, config).await
+      };
+      if let Err(err) = run_flow().await {
+        return Err(err.display_with_details().await);
+      }
     }
   }
   Ok(())

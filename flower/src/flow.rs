@@ -9,9 +9,9 @@ use std::sync::Arc;
 use thiserror::Error;
 use tokio::io;
 
-use crate::util::serialization::SerializationError;
+use crate::util::serialization::{self, SerializationError};
 pub use description::FlowDescription;
-use node::NodeError;
+use node::{NodeError, NodeRunInfo};
 pub use run::{FlowRunner, FlowTask, RunConfig};
 
 fn io_err(path: impl Into<Utf8PathBuf>) -> impl FnOnce(io::Error) -> FlowError {
@@ -36,4 +36,23 @@ pub enum FlowError {
   Serialization(Arc<SerializationError>),
   #[error("Dependency '{0}' has no output at {1}.")]
   MissingDependency(String, Utf8PathBuf),
+}
+
+impl FlowError {
+  /// Displays the error with additional details that may require file reads.
+  pub async fn display_with_details(&self) -> String {
+    let mut out = self.to_string();
+    if let FlowError::NodeError(_, err) = self
+      && let NodeError::NonZeroExitStatus { run_info, .. } = &**err
+      && let Ok(info) = serialization::read::<NodeRunInfo>(run_info).await
+    {
+      let cmd_out = String::from_utf8_lossy(info.last_output());
+      let cmd_out = cmd_out.trim_end();
+      if !cmd_out.is_empty() {
+        out += "\nOutput of the failing command:\n";
+        out += cmd_out;
+      }
+    }
+    out
+  }
 }
