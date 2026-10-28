@@ -9,7 +9,7 @@ let
 
   deps = builtins.fromTOML (
     builtins.readFile (
-      pkgs.runCommand "flow-deps.toml" { } ''
+      pkgs.runCommandLocal "flow-deps.toml" { } ''
         ${flower}/bin/flower deps ${flow} --out $out
       ''
     )
